@@ -1,0 +1,1124 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shopfloor Capacity Console</title>
+    <style>
+      :root {
+        --background: #f4f7f6;
+        --foreground: #1a2423;
+        --panel: #ffffff;
+        --panel-muted: #eef3f1;
+        --line: #d8e0dd;
+        --text-muted: #60706b;
+        --green: #047857;
+        --teal: #0f766e;
+        --amber: #b45309;
+        --red: #be123c;
+        --blue: #2563eb;
+        --shadow: 0 16px 48px rgba(31, 43, 39, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        background: var(--background);
+        color: var(--foreground);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        letter-spacing: 0;
+        margin: 0;
+        min-width: 320px;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      .app {
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .topbar,
+      .metrics,
+      .grid {
+        margin: 0 auto;
+        max-width: 1720px;
+      }
+
+      .topbar {
+        align-items: center;
+        display: flex;
+        gap: 18px;
+        justify-content: space-between;
+        margin-bottom: 16px;
+      }
+
+      .brand {
+        align-items: center;
+        display: flex;
+        gap: 14px;
+      }
+
+      .mark {
+        background: linear-gradient(135deg, var(--green), var(--blue));
+        border: 3px solid #dff6ed;
+        border-radius: 999px;
+        box-shadow: 0 0 0 6px rgba(4, 120, 87, 0.1);
+        height: 28px;
+        width: 28px;
+      }
+
+      .eyebrow,
+      .metric span,
+      .panel-title span,
+      .constraint-group > span {
+        color: var(--text-muted);
+        display: block;
+        font-size: 0.76rem;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        font-size: 1.7rem;
+        line-height: 1.1;
+      }
+
+      .actions {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+      }
+
+      .sync,
+      .switcher {
+        align-items: center;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+      }
+
+      .sync {
+        gap: 8px;
+        padding: 9px 12px;
+      }
+
+      .sync span {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+      }
+
+      .sync strong {
+        color: var(--green);
+        font-size: 0.85rem;
+      }
+
+      .switcher {
+        background: #e6eeeb;
+        gap: 4px;
+        padding: 4px;
+      }
+
+      .switcher button,
+      .tabs button {
+        background: transparent;
+        border: 0;
+        border-radius: 6px;
+        color: var(--text-muted);
+        min-height: 34px;
+        padding: 0 12px;
+        white-space: nowrap;
+      }
+
+      .switcher button.active,
+      .tabs button.active {
+        background: var(--panel);
+        box-shadow: 0 4px 14px rgba(31, 43, 39, 0.08);
+        color: var(--foreground);
+        font-weight: 700;
+      }
+
+      .metrics {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin-bottom: 16px;
+      }
+
+      .metric,
+      .queue,
+      .schedule,
+      .inspector,
+      .flex {
+        background: rgba(255, 255, 255, 0.94);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+      }
+
+      .metric,
+      .flex {
+        min-height: 112px;
+        padding: 16px;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 2rem;
+        line-height: 1.1;
+        margin-top: 8px;
+      }
+
+      .metric p {
+        color: var(--text-muted);
+        font-size: 0.88rem;
+        line-height: 1.4;
+        margin-top: 8px;
+      }
+
+      .good strong {
+        color: var(--green);
+      }
+
+      .warn strong {
+        color: var(--amber);
+      }
+
+      .risk strong {
+        color: var(--red);
+      }
+
+      .flex {
+        display: grid;
+        gap: 12px;
+      }
+
+      .flex span {
+        color: var(--text-muted);
+        display: block;
+        font-size: 0.76rem;
+        font-weight: 700;
+      }
+
+      .flex strong {
+        display: block;
+        margin-top: 7px;
+      }
+
+      .flex input {
+        accent-color: var(--teal);
+        width: 100%;
+      }
+
+      .grid {
+        align-items: start;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(260px, 320px) minmax(680px, 1fr) minmax(280px, 360px);
+      }
+
+      .queue,
+      .inspector {
+        padding: 14px;
+      }
+
+      .panel-title {
+        align-items: center;
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+      }
+
+      .panel-title strong {
+        font-size: 0.86rem;
+      }
+
+      .queue-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .order {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: inherit;
+        padding: 12px;
+        text-align: left;
+        width: 100%;
+      }
+
+      .order.active {
+        border-color: var(--teal);
+        box-shadow: inset 4px 0 0 var(--teal);
+      }
+
+      .row {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .order-name {
+        display: block;
+        font-size: 0.92rem;
+        margin-top: 8px;
+      }
+
+      .pill {
+        border-radius: 999px;
+        font-size: 0.72rem;
+        font-weight: 800;
+        padding: 4px 8px;
+      }
+
+      .hot,
+      .late,
+      .unscheduled {
+        background: #ffe5ea;
+        color: var(--red);
+      }
+
+      .high,
+      .tight {
+        background: #fff0da;
+        color: var(--amber);
+      }
+
+      .standard,
+      .on-track {
+        background: #dff6ed;
+        color: var(--green);
+      }
+
+      .meta {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        margin-top: 9px;
+      }
+
+      .progress {
+        background: #e6eeeb;
+        border-radius: 999px;
+        height: 6px;
+        margin-top: 10px;
+        overflow: hidden;
+      }
+
+      .progress span {
+        background: linear-gradient(90deg, var(--green), var(--blue));
+        display: block;
+        height: 100%;
+      }
+
+      .schedule {
+        overflow: hidden;
+      }
+
+      .schedule-head {
+        align-items: center;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 20px;
+        justify-content: space-between;
+        padding: 18px;
+      }
+
+      .schedule-head h2 {
+        font-size: 1.25rem;
+        line-height: 1.25;
+        margin-top: 5px;
+      }
+
+      .schedule-head p:not(.eyebrow) {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        line-height: 1.45;
+        margin-top: 5px;
+      }
+
+      .tabs {
+        background: #e6eeeb;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+        gap: 4px;
+        padding: 4px;
+      }
+
+      .scroll {
+        overflow-x: auto;
+      }
+
+      .schedule-grid {
+        display: grid;
+        grid-template-columns: 190px repeat(5, minmax(150px, 1fr));
+        min-width: 940px;
+      }
+
+      .corner,
+      .day,
+      .machine,
+      .slot {
+        border-bottom: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+      }
+
+      .corner,
+      .day {
+        background: #f8fbfa;
+        min-height: 58px;
+        padding: 12px;
+      }
+
+      .day span,
+      .machine span {
+        color: var(--text-muted);
+        display: block;
+        font-size: 0.78rem;
+        margin-top: 4px;
+      }
+
+      .machine {
+        background: #fbfdfc;
+        min-height: 72px;
+        padding: 12px;
+      }
+
+      .machine strong {
+        display: block;
+        font-size: 0.9rem;
+        line-height: 1.25;
+      }
+
+      .slot {
+        background:
+          repeating-linear-gradient(
+            90deg,
+            transparent,
+            transparent 24%,
+            rgba(96, 112, 107, 0.08) 25%
+          ),
+          #ffffff;
+        min-height: 72px;
+        overflow: hidden;
+        padding: 9px;
+        position: relative;
+      }
+
+      .slot.over {
+        background:
+          linear-gradient(0deg, rgba(190, 18, 60, 0.06), rgba(190, 18, 60, 0.06)),
+          #ffffff;
+      }
+
+      .slot.offline {
+        background: #eef3f1;
+      }
+
+      .cap {
+        color: #7b8a86;
+        font-size: 0.68rem;
+        position: absolute;
+        right: 8px;
+        top: 6px;
+      }
+
+      .block {
+        align-items: center;
+        border: 0;
+        border-radius: 6px;
+        bottom: 12px;
+        color: #ffffff;
+        display: flex;
+        gap: 6px;
+        justify-content: space-between;
+        min-width: 0;
+        overflow: hidden;
+        padding: 7px 8px;
+        position: absolute;
+        text-align: left;
+        top: 26px;
+      }
+
+      .block.active {
+        box-shadow:
+          0 0 0 3px rgba(255, 255, 255, 0.9),
+          0 0 0 5px rgba(15, 118, 110, 0.45);
+      }
+
+      .block strong,
+      .block span {
+        display: block;
+        font-size: 0.72rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .load-grid {
+        display: grid;
+        grid-template-columns: 190px repeat(5, minmax(130px, 1fr));
+        min-width: 860px;
+      }
+
+      .load-head,
+      .load-name,
+      .load-cell {
+        border-bottom: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+      }
+
+      .load-head {
+        background: #f8fbfa;
+        font-weight: 800;
+        padding: 14px;
+      }
+
+      .load-name {
+        align-items: center;
+        display: flex;
+        font-weight: 800;
+        min-height: 84px;
+        padding: 14px;
+      }
+
+      .load-cell {
+        min-height: 84px;
+        padding: 14px;
+        position: relative;
+      }
+
+      .load-cell strong,
+      .load-cell span {
+        display: block;
+        position: relative;
+        z-index: 1;
+      }
+
+      .load-cell span {
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        margin-top: 6px;
+      }
+
+      .load-cell i {
+        background: rgba(4, 120, 87, 0.16);
+        bottom: 0;
+        display: block;
+        left: 0;
+        position: absolute;
+        top: 0;
+      }
+
+      .load-cell.full i {
+        background: rgba(180, 83, 9, 0.18);
+      }
+
+      .load-cell.over i {
+        background: rgba(190, 18, 60, 0.18);
+      }
+
+      .tool-board {
+        display: grid;
+        gap: 10px;
+        padding: 16px;
+      }
+
+      .tool {
+        align-items: center;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: space-between;
+        padding: 12px;
+      }
+
+      .tool span,
+      .tool small {
+        color: var(--text-muted);
+        display: block;
+        font-size: 0.82rem;
+        margin-top: 4px;
+      }
+
+      .tool-days {
+        display: grid;
+        gap: 5px;
+        grid-template-columns: repeat(5, 28px);
+      }
+
+      .tool-days span {
+        align-items: center;
+        background: #e6eeeb;
+        border-radius: 6px;
+        color: var(--foreground);
+        display: flex;
+        font-weight: 800;
+        height: 28px;
+        justify-content: center;
+        margin: 0;
+      }
+
+      .tool-days .busy {
+        background: #ffe5ea;
+        color: var(--red);
+      }
+
+      .selected {
+        display: grid;
+        gap: 12px;
+      }
+
+      .selected h3 {
+        font-size: 1.35rem;
+      }
+
+      .selected p {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        margin-top: 4px;
+      }
+
+      .facts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .facts span {
+        background: var(--panel-muted);
+        border-radius: 6px;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        padding: 7px 8px;
+      }
+
+      .routing {
+        display: grid;
+        gap: 8px;
+      }
+
+      .route {
+        background: #f8fbfa;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        gap: 3px;
+        grid-template-columns: 54px 1fr;
+        padding: 10px;
+      }
+
+      .route strong {
+        color: var(--teal);
+        grid-row: span 3;
+      }
+
+      .route small,
+      .route em {
+        color: var(--text-muted);
+        display: block;
+        font-size: 0.76rem;
+        font-style: normal;
+        line-height: 1.35;
+      }
+
+      .divider {
+        border-top: 1px solid var(--line);
+        margin: 16px 0;
+      }
+
+      .constraint-group {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .constraint-group p {
+        color: var(--text-muted);
+        font-size: 0.84rem;
+        line-height: 1.35;
+      }
+
+      .constraint {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 9px;
+      }
+
+      .constraint strong,
+      .constraint span {
+        display: block;
+        font-size: 0.82rem;
+      }
+
+      .constraint span {
+        color: var(--amber);
+      }
+
+      .recommendations {
+        display: grid;
+        gap: 8px;
+        list-style-position: inside;
+        margin: 0;
+        padding: 0;
+      }
+
+      .recommendations li {
+        background: #f8fbfa;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 0.86rem;
+        line-height: 1.4;
+        padding: 10px;
+      }
+
+      @media (max-width: 1180px) {
+        .grid {
+          grid-template-columns: 290px minmax(640px, 1fr);
+        }
+
+        .inspector {
+          grid-column: 1 / -1;
+        }
+      }
+
+      @media (max-width: 860px) {
+        .app {
+          padding: 12px;
+        }
+
+        .topbar,
+        .actions,
+        .schedule-head {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .metrics,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        .switcher,
+        .tabs {
+          overflow-x: auto;
+        }
+
+        h1 {
+          font-size: 1.45rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app">
+      <section class="topbar">
+        <div class="brand">
+          <span class="mark"></span>
+          <div>
+            <p class="eyebrow">NetSuite finite scheduling</p>
+            <h1>Shopfloor capacity console</h1>
+          </div>
+        </div>
+        <div class="actions">
+          <div class="sync"><span>Data sync</span><strong>12 min ago</strong></div>
+          <div class="switcher" id="scenarioButtons"></div>
+        </div>
+      </section>
+
+      <section class="metrics" id="metrics"></section>
+
+      <section class="grid">
+        <aside class="queue">
+          <div class="panel-title"><span>Released work orders</span><strong>7 live</strong></div>
+          <div class="queue-list" id="queue"></div>
+        </aside>
+
+        <section class="schedule">
+          <div class="schedule-head">
+            <div>
+              <p class="eyebrow">Scenario</p>
+              <h2 id="scenarioSummary"></h2>
+              <p id="scenarioIntent"></p>
+            </div>
+            <div class="tabs" id="viewTabs"></div>
+          </div>
+          <div id="scheduleView"></div>
+        </section>
+
+        <aside class="inspector">
+          <div class="panel-title"><span>Selected work order</span><strong id="selectedNetSuite"></strong></div>
+          <div id="selected"></div>
+          <div class="divider"></div>
+          <div class="panel-title"><span>Bottlenecks</span><strong>live</strong></div>
+          <div id="bottlenecks"></div>
+          <div class="divider"></div>
+          <div class="panel-title"><span>Recommended moves</span><strong id="recScenario"></strong></div>
+          <ol class="recommendations" id="recommendations"></ol>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const days = [
+        { id: "mon", label: "Mon", date: "Jun 15" },
+        { id: "tue", label: "Tue", date: "Jun 16" },
+        { id: "wed", label: "Wed", date: "Jun 17" },
+        { id: "thu", label: "Thu", date: "Jun 18" },
+        { id: "fri", label: "Fri", date: "Jun 19" },
+      ];
+
+      const scenarios = {
+        baseline: {
+          label: "Baseline",
+          summary: "Current promise dates with first-fit loading from NetSuite.",
+          intent: "Shows the overload before any balancing moves are applied.",
+        },
+        balanced: {
+          label: "Balanced",
+          summary: "Moves CNC spillover and protects constrained QA hours.",
+          intent: "Best view for the shopfloor manager morning standup.",
+        },
+        rush: {
+          label: "Rush order",
+          summary: "Expedites hot orders and flags the labour tradeoffs.",
+          intent: "Useful when sales or service asks what can be pulled forward.",
+        },
+      };
+
+      const machines = [
+        ["M-CNC-01", "Mazak VCN 530C", "CNC milling", [8, 8, 6, 8, 0], "#0f766e"],
+        ["M-CNC-02", "Doosan DNM 5700", "CNC milling", [8, 6, 8, 8, 6], "#2563eb"],
+        ["M-LASER-01", "Bystronic laser", "Laser cutting", [8, 8, 8, 4, 8], "#7c3aed"],
+        ["M-WELD-01", "Weld cell A", "Fabrication", [6, 8, 8, 8, 8], "#c2410c"],
+        ["M-ASSY-01", "Assembly bay 2", "Assembly", [8, 8, 8, 8, 8], "#047857"],
+        ["M-QA-01", "CMM and final QA", "Inspection", [5, 5, 5, 5, 5], "#be123c"],
+      ].map(([id, name, center, availability, color]) => ({ id, name, center, availability, color }));
+
+      const skills = [
+        ["cnc", "CNC setup", [10, 10, 8, 10, 5]],
+        ["laser", "Laser operator", [6, 6, 6, 4, 6]],
+        ["weld", "Certified welder", [6, 8, 8, 8, 6]],
+        ["assembly", "Assembly tech", [6, 6, 6, 6, 6]],
+        ["qa", "QA inspector", [4, 4, 4, 4, 4]],
+      ].map(([id, label, availability]) => ({ id, label, availability }));
+
+      const tools = [
+        ["T-MILL-42", "Fixture A-12", 1, "CNC crib"],
+        ["T-DRILL-06", "Drill nest 06", 1, "Tool room"],
+        ["T-LAS-09", "Laser nest 09", 2, "Laser rack"],
+        ["T-WELD-18", "Weld fixture 18", 1, "Weld cell A"],
+        ["T-CMM-03", "CMM probe kit", 1, "QA lab"],
+        ["T-ASSY-11", "Assembly jig 11", 1, "Assembly bay"],
+      ].map(([id, label, quantity, location]) => ({ id, label, quantity, location }));
+
+      const op = (id, step, label, machineId, skill, toolId, duration, skillHours) => ({
+        id, step, label, machineId, skill, toolId, duration, skillHours,
+      });
+
+      const workOrders = [
+        {
+          id: "WO-1048", netsuiteId: "NS-WO-89731", customer: "AeroMotion", item: "Pump body P-42",
+          quantity: 48, dueDay: 2, priority: "Hot", materialStatus: "Released",
+          routing: [op("op10", "10", "Rough mill", "M-CNC-01", "cnc", "T-MILL-42", 5.5, 2.5), op("op20", "20", "Finish mill", "M-CNC-02", "cnc", "T-MILL-42", 3.5, 1.5), op("op30", "30", "CMM inspect", "M-QA-01", "qa", "T-CMM-03", 1.5, 1.5)],
+        },
+        {
+          id: "WO-1051", netsuiteId: "NS-WO-89746", customer: "HydraValve", item: "Manifold HV-8",
+          quantity: 32, dueDay: 3, priority: "High", materialStatus: "Released",
+          routing: [op("op10", "10", "Laser blanks", "M-LASER-01", "laser", "T-LAS-09", 4, 2), op("op20", "20", "Drill ports", "M-CNC-02", "cnc", "T-DRILL-06", 4, 2), op("op30", "30", "Tack weld", "M-WELD-01", "weld", "T-WELD-18", 3, 3)],
+        },
+        {
+          id: "WO-1058", netsuiteId: "NS-WO-89752", customer: "CleanPack", item: "Guard rail kit",
+          quantity: 120, dueDay: 4, priority: "Standard", materialStatus: "Partial",
+          routing: [op("op10", "10", "Laser rails", "M-LASER-01", "laser", "T-LAS-09", 5, 2.5), op("op20", "20", "Weld brackets", "M-WELD-01", "weld", "T-WELD-18", 4, 4), op("op30", "30", "Pack assembly", "M-ASSY-01", "assembly", "T-ASSY-11", 3, 3)],
+        },
+        {
+          id: "WO-1062", netsuiteId: "NS-WO-89757", customer: "MetroRail", item: "Bracket kit",
+          quantity: 64, dueDay: 1, priority: "Hot", materialStatus: "Released",
+          routing: [op("op10", "10", "Mill bracket", "M-CNC-01", "cnc", "T-MILL-42", 4, 1.8), op("op20", "20", "Weld tabs", "M-WELD-01", "weld", "T-WELD-18", 2, 2), op("op30", "30", "Final QA", "M-QA-01", "qa", "T-CMM-03", 1, 1)],
+        },
+        {
+          id: "WO-1067", netsuiteId: "NS-WO-89760", customer: "AgriPro", item: "Auger hub",
+          quantity: 80, dueDay: 4, priority: "High", materialStatus: "Released",
+          routing: [op("op10", "10", "Mill hub", "M-CNC-02", "cnc", "T-DRILL-06", 6, 2.8), op("op20", "20", "Assembly", "M-ASSY-01", "assembly", "T-ASSY-11", 4, 4), op("op30", "30", "QA release", "M-QA-01", "qa", "T-CMM-03", 1, 1)],
+        },
+        {
+          id: "WO-1070", netsuiteId: "NS-WO-89769", customer: "Service", item: "Rush repair kit",
+          quantity: 12, dueDay: 3, priority: "Hot", materialStatus: "Released",
+          routing: [op("op10", "10", "CNC rework", "M-CNC-01", "cnc", "T-MILL-42", 3, 1.2), op("op20", "20", "QA release", "M-QA-01", "qa", "T-CMM-03", 1.5, 1.5)],
+        },
+        {
+          id: "WO-1074", netsuiteId: "NS-WO-89771", customer: "MedLine", item: "Stainless frame",
+          quantity: 28, dueDay: 4, priority: "High", materialStatus: "Released",
+          routing: [op("op10", "10", "Laser frame", "M-LASER-01", "laser", "T-LAS-09", 3, 1.5), op("op20", "20", "TIG weld", "M-WELD-01", "weld", "T-WELD-18", 5, 5), op("op30", "30", "Final QA", "M-QA-01", "qa", "T-CMM-03", 2, 2)],
+        },
+      ];
+
+      const block = (id, workOrderId, operationId, machineId, day, start, duration, note = "") => ({
+        id, workOrderId, operationId, machineId, day, start, duration, note,
+      });
+
+      const plans = {
+        baseline: [
+          block("b-1", "WO-1062", "op10", "M-CNC-01", 0, 0, 4), block("b-2", "WO-1048", "op10", "M-CNC-01", 0, 4, 5.5, "Runs past shift"), block("b-3", "WO-1067", "op10", "M-CNC-02", 0, 0, 6), block("b-4", "WO-1051", "op20", "M-CNC-02", 0, 6, 4, "CNC spillover"), block("b-5", "WO-1051", "op10", "M-LASER-01", 0, 0, 4), block("b-6", "WO-1058", "op10", "M-LASER-01", 0, 4, 5, "Laser overrun"), block("b-7", "WO-1062", "op20", "M-WELD-01", 0, 3.5, 2), block("b-8", "WO-1070", "op10", "M-CNC-01", 1, 0, 3), block("b-9", "WO-1048", "op20", "M-CNC-02", 1, 2, 3.5), block("b-10", "WO-1051", "op30", "M-WELD-01", 1, 1, 3), block("b-11", "WO-1058", "op20", "M-WELD-01", 1, 4, 4), block("b-12", "WO-1062", "op30", "M-QA-01", 1, 0, 1), block("b-13", "WO-1048", "op30", "M-QA-01", 1, 4.25, 1.5), block("b-14", "WO-1058", "op30", "M-ASSY-01", 2, 0, 3), block("b-15", "WO-1067", "op20", "M-ASSY-01", 2, 3.25, 4), block("b-16", "WO-1070", "op20", "M-QA-01", 2, 3.5, 1.5), block("b-17", "WO-1074", "op10", "M-LASER-01", 3, 0, 3), block("b-18", "WO-1074", "op20", "M-WELD-01", 3, 2, 5), block("b-19", "WO-1067", "op30", "M-QA-01", 4, 1, 1), block("b-20", "WO-1074", "op30", "M-QA-01", 4, 2.5, 2),
+        ],
+        balanced: [
+          block("p-1", "WO-1062", "op10", "M-CNC-01", 0, 0, 4), block("p-2", "WO-1051", "op10", "M-LASER-01", 0, 0, 4), block("p-3", "WO-1067", "op10", "M-CNC-02", 0, 0, 6), block("p-4", "WO-1062", "op20", "M-WELD-01", 0, 4, 2), block("p-5", "WO-1048", "op10", "M-CNC-01", 1, 0, 5.5), block("p-6", "WO-1051", "op20", "M-CNC-02", 1, 0.5, 4), block("p-7", "WO-1058", "op10", "M-LASER-01", 1, 1, 5), block("p-8", "WO-1062", "op30", "M-QA-01", 1, 0, 1), block("p-9", "WO-1070", "op10", "M-CNC-01", 1, 5.5, 3, "Uses flex hour"), block("p-10", "WO-1048", "op20", "M-CNC-02", 2, 0, 3.5), block("p-11", "WO-1051", "op30", "M-WELD-01", 2, 0, 3), block("p-12", "WO-1048", "op30", "M-QA-01", 2, 1.25, 1.5), block("p-13", "WO-1058", "op20", "M-WELD-01", 2, 3.5, 4), block("p-14", "WO-1070", "op20", "M-QA-01", 3, 0, 1.5), block("p-15", "WO-1058", "op30", "M-ASSY-01", 3, 0, 3), block("p-16", "WO-1067", "op20", "M-ASSY-01", 3, 3.25, 4), block("p-17", "WO-1074", "op10", "M-LASER-01", 4, 0, 3), block("p-18", "WO-1074", "op20", "M-WELD-01", 4, 0, 5), block("p-19", "WO-1067", "op30", "M-QA-01", 4, 0, 1), block("p-20", "WO-1074", "op30", "M-QA-01", 4, 2.25, 2),
+        ],
+        rush: [
+          block("r-1", "WO-1062", "op10", "M-CNC-01", 0, 0, 4), block("r-2", "WO-1070", "op10", "M-CNC-01", 0, 4.25, 3), block("r-3", "WO-1051", "op10", "M-LASER-01", 0, 0, 4), block("r-4", "WO-1067", "op10", "M-CNC-02", 0, 0, 6), block("r-5", "WO-1062", "op20", "M-WELD-01", 0, 4, 2), block("r-6", "WO-1070", "op20", "M-QA-01", 1, 0, 1.5), block("r-7", "WO-1048", "op10", "M-CNC-01", 1, 0, 5.5), block("r-8", "WO-1051", "op20", "M-CNC-02", 1, 0.5, 4), block("r-9", "WO-1062", "op30", "M-QA-01", 1, 2, 1), block("r-10", "WO-1048", "op20", "M-CNC-02", 2, 0, 3.5), block("r-11", "WO-1048", "op30", "M-QA-01", 2, 0, 1.5), block("r-12", "WO-1051", "op30", "M-WELD-01", 2, 0, 3), block("r-13", "WO-1074", "op10", "M-LASER-01", 2, 4, 3), block("r-14", "WO-1074", "op20", "M-WELD-01", 2, 3.25, 5, "Welder overload"), block("r-15", "WO-1058", "op10", "M-LASER-01", 3, 0, 5), block("r-16", "WO-1058", "op20", "M-WELD-01", 3, 0, 4), block("r-17", "WO-1067", "op20", "M-ASSY-01", 3, 0, 4), block("r-18", "WO-1058", "op30", "M-ASSY-01", 4, 0, 3), block("r-19", "WO-1067", "op30", "M-QA-01", 4, 0, 1), block("r-20", "WO-1074", "op30", "M-QA-01", 4, 1.25, 2),
+        ],
+      };
+
+      const recs = {
+        baseline: ["Move WO-1048 op 10 from Monday to Tuesday CNC-01 to remove the first overload.", "Split QA release work across Wednesday and Thursday before accepting new rush jobs.", "Reserve Fixture A-12 for MetroRail first; AeroMotion can follow once the hot order clears."],
+        balanced: ["Approve one CNC flex hour Tuesday to keep WO-1070 inside the promised window.", "Keep Friday QA protected for MedLine and AgriPro final release checks.", "Do not pull CleanPack earlier unless another certified welder is added on Wednesday."],
+        rush: ["Rush service work is feasible, but Wednesday welding becomes the constraint.", "Ask sales whether MedLine can ship Friday afternoon; otherwise add a welder on Wednesday.", "Hold the CleanPack guard rail kit at partial material status until laser time is confirmed."],
+      };
+
+      const state = { scenario: "balanced", view: "machine", selected: "WO-1048", flex: 1 };
+
+      const byId = (items, id) => items.find((item) => item.id === id);
+      const order = (id) => byId(workOrders, id);
+      const machine = (id) => byId(machines, id);
+      const skill = (id) => byId(skills, id);
+      const tool = (id) => byId(tools, id);
+      const operation = (blockItem) => order(blockItem.workOrderId).routing.find((item) => item.id === blockItem.operationId);
+      const sum = (items) => items.reduce((total, value) => total + value, 0);
+      const priorityWeight = (priority) => (priority === "Hot" ? 3 : priority === "High" ? 2 : 1);
+
+      function dailyLoad(id, label, day, load, capacity) {
+        const utilization = capacity > 0 ? Math.round((load / capacity) * 100) : load > 0 ? 999 : 0;
+        const status = utilization > 100 ? "over" : utilization >= 88 ? "full" : "open";
+        return { id, label, day, load, capacity, utilization, status };
+      }
+
+      function analyze() {
+        const plan = plans[state.scenario];
+        const machineLoads = machines.flatMap((resource) => days.map((_, dayIndex) => {
+          const load = sum(plan.filter((item) => item.machineId === resource.id && item.day === dayIndex).map((item) => item.duration));
+          const capacity = resource.availability[dayIndex] > 0 ? resource.availability[dayIndex] + state.flex : 0;
+          return dailyLoad(resource.id, resource.name, dayIndex, load, capacity);
+        }));
+        const skillLoads = skills.flatMap((resource) => days.map((_, dayIndex) => {
+          const load = sum(plan.filter((item) => item.day === dayIndex).map((item) => {
+            const opItem = operation(item);
+            return opItem.skill === resource.id ? opItem.skillHours : 0;
+          }));
+          return dailyLoad(resource.id, resource.label, dayIndex, load, resource.availability[dayIndex] + Math.min(2, state.flex));
+        }));
+        const completed = workOrders.map((wo) => {
+          const blocks = plan.filter((item) => item.workOrderId === wo.id);
+          const finish = Math.max(...blocks.map((item) => item.day + (item.start + item.duration) / 8), -1);
+          const due = wo.dueDay + 1;
+          const status = finish < 0 ? "unscheduled" : finish > due ? "late" : finish > due - 0.2 ? "tight" : "on-track";
+          return { id: wo.id, finish, status };
+        });
+        const totalLoad = sum(machineLoads.map((item) => item.load));
+        const totalCapacity = sum(machineLoads.map((item) => item.capacity));
+        const late = completed.filter((item) => item.status === "late");
+        const tight = completed.filter((item) => item.status === "tight");
+        const peak = [...machineLoads, ...skillLoads].sort((a, b) => b.utilization - a.utilization)[0];
+        return { machineLoads, skillLoads, completed, totalLoad, average: Math.round((totalLoad / totalCapacity) * 100), late, tight, peak, toolConflicts: toolConflicts(plan) };
+      }
+
+      function toolConflicts(plan) {
+        const conflicts = [];
+        tools.forEach((toolItem) => {
+          days.forEach((_, dayIndex) => {
+            const blocks = plan.filter((item) => item.day === dayIndex && operation(item).toolId === toolItem.id);
+            const overlapping = new Set();
+            for (let i = 0; i < blocks.length; i += 1) {
+              for (let j = i + 1; j < blocks.length; j += 1) {
+                const a = blocks[i];
+                const b = blocks[j];
+                if (a.start < b.start + b.duration && b.start < a.start + a.duration && toolItem.quantity < 2) {
+                  overlapping.add(a.workOrderId);
+                  overlapping.add(b.workOrderId);
+                }
+              }
+            }
+            if (overlapping.size) conflicts.push({ tool: toolItem.label, day: dayIndex, orders: [...overlapping] });
+          });
+        });
+        return conflicts;
+      }
+
+      function render() {
+        renderButtons();
+        renderMetrics();
+        renderQueue();
+        renderScheduleHeader();
+        renderSelected();
+        renderBottlenecks();
+        renderRecommendations();
+      }
+
+      function renderButtons() {
+        document.getElementById("scenarioButtons").innerHTML = Object.entries(scenarios).map(([id, item]) =>
+          `<button class="${state.scenario === id ? "active" : ""}" onclick="setScenario('${id}')">${item.label}</button>`
+        ).join("");
+        document.getElementById("viewTabs").innerHTML = [["machine", "Machines"], ["skill", "Labour"], ["tool", "Tools"]].map(([id, label]) =>
+          `<button class="${state.view === id ? "active" : ""}" onclick="setView('${id}')">${label}</button>`
+        ).join("");
+      }
+
+      function renderMetrics() {
+        const data = analyze();
+        document.getElementById("metrics").innerHTML = `
+          <article class="metric"><span>Plant load</span><strong>${data.average}%</strong><p>${data.totalLoad.toFixed(1)} scheduled hours</p></article>
+          <article class="metric ${data.late.length ? "risk" : "good"}"><span>Late risk</span><strong>${data.late.length}</strong><p>${data.tight.length} tight orders</p></article>
+          <article class="metric ${data.peak.status === "over" ? "risk" : "warn"}"><span>Peak constraint</span><strong>${data.peak.utilization}%</strong><p>${data.peak.label}</p></article>
+          <article class="flex"><div><span>Flex hours</span><strong>${state.flex}h per critical resource</strong></div><input aria-label="Flex hours" min="0" max="3" step="1" type="range" value="${state.flex}" oninput="setFlex(this.value)" /></article>
+        `;
+      }
+
+      function renderQueue() {
+        const plan = plans[state.scenario];
+        const rows = [...workOrders].sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority)).map((wo) => {
+          const progress = Math.round((wo.routing.filter((route) => plan.some((item) => item.workOrderId === wo.id && item.operationId === route.id)).length / wo.routing.length) * 100);
+          return `<button class="order ${state.selected === wo.id ? "active" : ""}" onclick="selectOrder('${wo.id}')">
+            <div class="row"><strong>${wo.id}</strong><span class="pill ${wo.priority.toLowerCase()}">${wo.priority}</span></div>
+            <span class="order-name">${wo.item}</span>
+            <div class="row meta"><span>${wo.customer}</span><span>Due ${days[wo.dueDay].label}</span></div>
+            <div class="progress"><span style="width:${progress}%"></span></div>
+          </button>`;
+        });
+        document.getElementById("queue").innerHTML = rows.join("");
+      }
+
+      function renderScheduleHeader() {
+        const meta = scenarios[state.scenario];
+        document.getElementById("scenarioSummary").textContent = meta.summary;
+        document.getElementById("scenarioIntent").textContent = meta.intent;
+        if (state.view === "machine") renderMachineSchedule();
+        if (state.view === "skill") renderLoadMatrix();
+        if (state.view === "tool") renderToolBoard();
+      }
+
+      function renderMachineSchedule() {
+        const plan = plans[state.scenario];
+        const head = `<div class="scroll"><div class="schedule-grid"><div class="corner">Resource</div>${days.map((day) => `<div class="day"><strong>${day.label}</strong><span>${day.date}</span></div>`).join("")}`;
+        const body = machines.map((resource) => {
+          const cells = days.map((day, dayIndex) => {
+            const dayBlocks = plan.filter((item) => item.machineId === resource.id && item.day === dayIndex);
+            const capacity = resource.availability[dayIndex];
+            const load = sum(dayBlocks.map((item) => item.duration));
+            return `<div class="slot ${load > capacity && capacity > 0 ? "over" : ""} ${capacity === 0 ? "offline" : ""}">
+              <span class="cap">${capacity ? `${capacity}h` : "down"}</span>
+              ${dayBlocks.map((item) => {
+                const opItem = operation(item);
+                const left = Math.min(100, (item.start / 8) * 100);
+                const width = Math.min(100 - left, (item.duration / 8) * 100);
+                return `<button class="block ${state.selected === item.workOrderId ? "active" : ""}" onclick="selectOrder('${item.workOrderId}')" title="${item.note}" style="background:${resource.color};left:${left}%;width:${Math.max(width, 16)}%"><strong>${item.workOrderId}</strong><span>${opItem.step}</span></button>`;
+              }).join("")}
+            </div>`;
+          }).join("");
+          return `<div class="machine"><strong>${resource.name}</strong><span>${resource.center}</span></div>${cells}`;
+        }).join("");
+        document.getElementById("scheduleView").innerHTML = `${head}${body}</div></div>`;
+      }
+
+      function renderLoadMatrix() {
+        const data = analyze();
+        const head = `<div class="scroll"><div class="load-grid"><div class="load-head">Resource</div>${days.map((day) => `<div class="load-head">${day.label}</div>`).join("")}`;
+        const body = skills.map((resource) => {
+          const cells = days.map((day, dayIndex) => {
+            const load = data.skillLoads.find((item) => item.id === resource.id && item.day === dayIndex);
+            return `<div class="load-cell ${load.status}"><strong>${load.utilization}%</strong><span>${load.load.toFixed(1)} / ${load.capacity.toFixed(1)}h</span><i style="width:${Math.min(load.utilization, 100)}%"></i></div>`;
+          }).join("");
+          return `<div class="load-name">${resource.label}</div>${cells}`;
+        }).join("");
+        document.getElementById("scheduleView").innerHTML = `${head}${body}</div></div>`;
+      }
+
+      function renderToolBoard() {
+        const plan = plans[state.scenario];
+        document.getElementById("scheduleView").innerHTML = `<div class="tool-board">${tools.map((toolItem) => {
+          const useCount = plan.filter((item) => operation(item).toolId === toolItem.id).length;
+          return `<article class="tool"><div><strong>${toolItem.label}</strong><span>${toolItem.location}</span></div><div class="tool-days">${days.map((day, dayIndex) => {
+            const count = plan.filter((item) => item.day === dayIndex && operation(item).toolId === toolItem.id).length;
+            return `<span class="${count > toolItem.quantity ? "busy" : ""}">${count}</span>`;
+          }).join("")}</div><small>${useCount} bookings, ${toolItem.quantity} available</small></article>`;
+        }).join("")}</div>`;
+      }
+
+      function renderSelected() {
+        const data = analyze();
+        const wo = order(state.selected);
+        const status = data.completed.find((item) => item.id === wo.id)?.status || "unscheduled";
+        document.getElementById("selectedNetSuite").textContent = wo.netsuiteId;
+        const blocks = plans[state.scenario].filter((item) => item.workOrderId === wo.id);
+        document.getElementById("selected").innerHTML = `<div class="selected">
+          <div class="row"><div><h3>${wo.id}</h3><p>${wo.item}</p></div><span class="pill ${status}">${status}</span></div>
+          <div class="facts"><span>${wo.customer}</span><span>${wo.quantity} units</span><span>Due ${days[wo.dueDay].label}</span><span>${wo.materialStatus}</span></div>
+          <div class="routing">${wo.routing.map((route) => {
+            const scheduled = blocks.find((item) => item.operationId === route.id);
+            return `<div class="route"><strong>Op ${route.step}</strong><span>${route.label}</span><small>${machine(route.machineId).name} | ${skill(route.skill).label} | ${tool(route.toolId).label}</small><em>${scheduled ? `${days[scheduled.day].label} ${scheduled.start.toFixed(1)}h` : "Not scheduled"}</em></div>`;
+          }).join("")}</div>
+        </div>`;
+      }
+
+      function renderBottlenecks() {
+        const data = analyze();
+        const machineOver = data.machineLoads.filter((item) => item.status === "over").sort((a, b) => b.utilization - a.utilization).slice(0, 3);
+        const skillOver = data.skillLoads.filter((item) => item.status === "over").sort((a, b) => b.utilization - a.utilization).slice(0, 3);
+        const group = (title, rows, empty) => `<div class="constraint-group"><span>${title}</span>${rows.length ? rows.map((item) => `<div class="constraint"><strong>${item.label}</strong><span>${days[item.day].label} at ${item.utilization}%</span></div>`).join("") : `<p>${empty}</p>`}</div>`;
+        const toolRows = data.toolConflicts.slice(0, 3);
+        const toolsHtml = `<div class="constraint-group"><span>Tools</span>${toolRows.length ? toolRows.map((item) => `<div class="constraint"><strong>${item.tool}</strong><span>${days[item.day].label}: ${item.orders.join(", ")}</span></div>`).join("") : "<p>Tooling has no overlapping bookings.</p>"}</div>`;
+        document.getElementById("bottlenecks").innerHTML = group("Machine", machineOver, "Machine capacity is clear.") + group("Labour", skillOver, "Labour capacity is clear.") + toolsHtml;
+      }
+
+      function renderRecommendations() {
+        document.getElementById("recScenario").textContent = scenarios[state.scenario].label;
+        document.getElementById("recommendations").innerHTML = recs[state.scenario].map((item) => `<li>${item}</li>`).join("");
+      }
+
+      function setScenario(id) {
+        state.scenario = id;
+        render();
+      }
+
+      function setView(id) {
+        state.view = id;
+        render();
+      }
+
+      function selectOrder(id) {
+        state.selected = id;
+        render();
+      }
+
+      function setFlex(value) {
+        state.flex = Number(value);
+        render();
+      }
+
+      render();
+    </script>
+  </body>
+</html>
