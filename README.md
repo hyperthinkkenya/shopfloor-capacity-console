@@ -1,5 +1,8 @@
 # Shopfloor Capacity Console
 
+A project to undertake capacity planning for work orders using finite planning
+and load balancing concepts.
+
 This app is a first working slice for finite scheduling against NetSuite-style
 work order data. It models released work orders, routings, work centers,
 machines, skilled labour pools, tooling, due dates, and scheduling scenarios a
