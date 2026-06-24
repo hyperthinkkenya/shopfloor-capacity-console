@@ -67,6 +67,15 @@ export type DailyLoad = {
   status: "open" | "full" | "over";
 };
 
+export type CalendarHours = [number, number, number, number, number];
+
+export type NetSuiteSyncState = {
+  lastFetch: string;
+  lastPublish: string;
+  mode: "mock" | "connected";
+  pendingUpdates: number;
+};
+
 export const days = [
   { id: "mon", label: "Mon", date: "Jun 15" },
   { id: "tue", label: "Tue", date: "Jun 16" },
@@ -74,6 +83,15 @@ export const days = [
   { id: "thu", label: "Thu", date: "Jun 18" },
   { id: "fri", label: "Fri", date: "Jun 19" },
 ] as const;
+
+export const defaultCalendarHours: CalendarHours = [8, 8, 8, 8, 8];
+
+export const netSuiteSyncDefaults: NetSuiteSyncState = {
+  lastFetch: "Mock data loaded",
+  lastPublish: "Not published",
+  mode: "mock",
+  pendingUpdates: 0,
+};
 
 export const scenarioMeta: Record<
   ScenarioId,
@@ -373,7 +391,11 @@ export function getOperation(blockItem: PlanBlock) {
   return order?.routing.find((operation) => operation.id === blockItem.operationId);
 }
 
-export function analyzePlan(blocks: PlanBlock[], flexHours: number) {
+export function analyzePlan(
+  blocks: PlanBlock[],
+  flexHours: number,
+  calendarHours: CalendarHours = defaultCalendarHours,
+) {
   const machineLoads = machines.flatMap((machine) =>
     days.map((_, dayIndex) => {
       const day = dayIndex as DayIndex;
@@ -382,8 +404,7 @@ export function analyzePlan(blocks: PlanBlock[], flexHours: number) {
           .filter((item) => item.machineId === machine.id && item.day === day)
           .map((item) => item.duration),
       );
-      const capacity =
-        machine.availability[day] > 0 ? machine.availability[day] + flexHours : 0;
+      const capacity = effectiveMachineCapacity(machine, day, calendarHours, flexHours);
       return toDailyLoad(machine.id, machine.name, day, load, capacity);
     }),
   );
@@ -399,7 +420,7 @@ export function analyzePlan(blocks: PlanBlock[], flexHours: number) {
             return operation?.skill === skill.id ? operation.skillHours : 0;
           }),
       );
-      const capacity = skill.availability[day] + Math.min(2, flexHours);
+      const capacity = effectiveSkillCapacity(skill, day, calendarHours, flexHours);
       return toDailyLoad(skill.id, skill.label, day, load, capacity);
     }),
   );
@@ -449,6 +470,108 @@ export function analyzePlan(blocks: PlanBlock[], flexHours: number) {
     toolConflicts: findToolConflicts(blocks),
     totalLoad,
   };
+}
+
+export function replanToCapacity(
+  targetUtilization: number,
+  calendarHours: CalendarHours,
+  flexHours = 0,
+): PlanBlock[] {
+  const machineBooked = new Map<string, number[]>();
+  const skillBooked = new Map<string, number[]>();
+  const orderFinish = new Map<string, number>();
+  const plan: PlanBlock[] = [];
+  const targetRatio = Math.max(0.55, Math.min(targetUtilization, 1.1));
+
+  machines.forEach((machine) => machineBooked.set(machine.id, [0, 0, 0, 0, 0]));
+  skills.forEach((skill) => skillBooked.set(skill.id, [0, 0, 0, 0, 0]));
+
+  const sortedOrders = [...workOrders].sort((a, b) => {
+    const dueDelta = a.dueDay - b.dueDay;
+    if (dueDelta !== 0) return dueDelta;
+    return priorityWeight(b.priority) - priorityWeight(a.priority);
+  });
+
+  sortedOrders.forEach((order) => {
+    order.routing.forEach((operation) => {
+      const earliest = Math.max(0, orderFinish.get(order.id) ?? 0);
+      const placement = findPlacement(
+        operation,
+        earliest,
+        machineBooked,
+        skillBooked,
+        calendarHours,
+        flexHours,
+        targetRatio,
+      );
+      const id = `auto-${order.id}-${operation.id}`;
+      plan.push(
+        block(
+          id,
+          order.id,
+          operation.id,
+          operation.machineId,
+          placement.day,
+          placement.start,
+          operation.duration,
+          placement.note,
+        ),
+      );
+      machineBooked.get(operation.machineId)![placement.day] += operation.duration;
+      skillBooked.get(operation.skill)![placement.day] += operation.skillHours;
+      orderFinish.set(order.id, placement.day + (placement.start + operation.duration) / 8);
+    });
+  });
+
+  return plan;
+}
+
+export function moveWorkOrder(
+  blocks: PlanBlock[],
+  workOrderId: string,
+  deltaDays: number,
+): PlanBlock[] {
+  return blocks.map((item) => {
+    if (item.workOrderId !== workOrderId) return item;
+    const nextDay = Math.max(0, Math.min(days.length - 1, item.day + deltaDays)) as DayIndex;
+    return {
+      ...item,
+      day: nextDay,
+      note:
+        deltaDays === 0
+          ? item.note
+          : `${item.note ? `${item.note}; ` : ""}Manual move ${deltaDays > 0 ? "later" : "earlier"}`,
+    };
+  });
+}
+
+export function countManualMoves(plan: PlanBlock[], originalPlan: PlanBlock[]) {
+  return plan.filter((item) => {
+    const original = originalPlan.find(
+      (candidate) =>
+        candidate.workOrderId === item.workOrderId &&
+        candidate.operationId === item.operationId,
+    );
+    return original && original.day !== item.day;
+  }).length;
+}
+
+export function buildNetSuiteUpdatePayload(blocks: PlanBlock[]) {
+  return workOrders.map((order) => ({
+    netsuiteId: order.netsuiteId,
+    operations: order.routing.map((operation) => {
+      const scheduled = blocks.find(
+        (item) => item.workOrderId === order.id && item.operationId === operation.id,
+      );
+      return {
+        operation: operation.step,
+        workCenter: operation.machineId,
+        scheduledDay: scheduled ? days[scheduled.day].label : null,
+        startHour: scheduled?.start ?? null,
+        durationHours: scheduled?.duration ?? operation.duration,
+      };
+    }),
+  }));
 }
 
 export function orderProgress(orderId: string, blocks: PlanBlock[]) {
@@ -504,6 +627,77 @@ function toDailyLoad(
   const utilization = capacity > 0 ? Math.round((load / capacity) * 100) : load > 0 ? 999 : 0;
   const status = utilization > 100 ? "over" : utilization >= 88 ? "full" : "open";
   return { id, label, day, load, capacity, utilization, status };
+}
+
+function effectiveMachineCapacity(
+  machine: Machine,
+  day: DayIndex,
+  calendarHours: CalendarHours,
+  flexHours: number,
+) {
+  if (machine.availability[day] === 0 || calendarHours[day] === 0) return 0;
+  return Math.min(machine.availability[day], calendarHours[day]) + flexHours;
+}
+
+function effectiveSkillCapacity(
+  skill: Skill,
+  day: DayIndex,
+  calendarHours: CalendarHours,
+  flexHours: number,
+) {
+  if (calendarHours[day] === 0) return 0;
+  const baseCapacity = skill.availability[day] * (calendarHours[day] / 8);
+  return baseCapacity + Math.min(2, flexHours);
+}
+
+function findPlacement(
+  operation: Operation,
+  earliestFinish: number,
+  machineBooked: Map<string, number[]>,
+  skillBooked: Map<string, number[]>,
+  calendarHours: CalendarHours,
+  flexHours: number,
+  targetRatio: number,
+) {
+  const machine = getMachine(operation.machineId);
+  const skill = getSkill(operation.skill);
+  if (!machine || !skill) {
+    return { day: 0 as DayIndex, start: 0, note: "Missing resource master" };
+  }
+
+  const earliestDay = Math.max(0, Math.min(days.length - 1, Math.floor(earliestFinish))) as DayIndex;
+  const fallbackDay = Math.max(0, Math.min(days.length - 1, earliestDay)) as DayIndex;
+  let fallback = {
+    day: fallbackDay,
+    start: machineBooked.get(operation.machineId)![fallbackDay],
+    note: "Placed above target to keep routing complete",
+  };
+
+  for (let dayIndex = earliestDay; dayIndex < days.length; dayIndex += 1) {
+    const day = dayIndex as DayIndex;
+    const machineCapacity =
+      effectiveMachineCapacity(machine, day, calendarHours, flexHours) * targetRatio;
+    const skillCapacity =
+      effectiveSkillCapacity(skill, day, calendarHours, flexHours) * targetRatio;
+    if (machineCapacity <= 0 || skillCapacity <= 0) continue;
+
+    const machineLoad = machineBooked.get(operation.machineId)![day];
+    const skillLoad = skillBooked.get(operation.skill)![day];
+    fallback = {
+      day,
+      start: machineLoad,
+      note: "Placed above target to keep routing complete",
+    };
+
+    if (
+      machineLoad + operation.duration <= machineCapacity &&
+      skillLoad + operation.skillHours <= skillCapacity
+    ) {
+      return { day, start: machineLoad, note: undefined };
+    }
+  }
+
+  return fallback;
 }
 
 function findToolConflicts(blocks: PlanBlock[]) {

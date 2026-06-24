@@ -33,6 +33,28 @@ The app can later add persistence for saved scenarios and approved schedules.
 The starter already includes the deployment wiring for that, but the first
 version keeps the model local so the scheduling experience is easy to review.
 
+## Current Planning Features
+
+- Move a selected work order earlier or later in the calendar.
+- Change daily calendar hours and automatically recalculate work order load.
+- Set a capacity utilization target and replan toward that target.
+- Stage NetSuite fetch and schedule-update actions in mock mode.
+- Keep the real NetSuite adapter server-side in `app/netsuite-adapter.ts`.
+
+## NetSuite Environment Variables
+
+When connecting to a real NetSuite account, add these variables to the hosting
+provider. Do not put these values in browser code or commit them to GitHub.
+
+```text
+NETSUITE_ACCOUNT_ID
+NETSUITE_CONSUMER_KEY
+NETSUITE_CONSUMER_SECRET
+NETSUITE_TOKEN_ID
+NETSUITE_TOKEN_SECRET
+NETSUITE_RESTLET_BASE_URL
+```
+
 ## Run Locally
 
 ```bash

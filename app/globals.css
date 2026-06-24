@@ -55,6 +55,7 @@ button {
 
 .topbar,
 .metrics-strip,
+.planning-strip,
 .workspace-grid {
   margin: 0 auto;
   max-width: 1720px;
@@ -168,12 +169,13 @@ h1 {
 .metrics-strip {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 16px;
 }
 
 .metric,
 .flex-control,
+.planner-card,
 .queue-panel,
 .schedule-panel,
 .inspector-panel {
@@ -232,6 +234,84 @@ h1 {
 .flex-control input {
   accent-color: var(--teal);
   width: 100%;
+}
+
+.planning-strip {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(360px, 1.4fr) minmax(220px, 0.6fr) minmax(260px, 0.7fr);
+  margin-bottom: 16px;
+}
+
+.planner-card {
+  padding: 14px;
+}
+
+.planner-wide {
+  min-width: 0;
+}
+
+.day-hour-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(5, minmax(64px, 1fr));
+}
+
+.day-hour-grid label {
+  background: #f8fbfa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+}
+
+.day-hour-grid span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.day-hour-grid input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--foreground);
+  min-height: 34px;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.planner-card > input {
+  accent-color: var(--teal);
+  width: 100%;
+}
+
+.planner-actions,
+.reschedule-actions,
+.connector-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.planner-actions button,
+.reschedule-actions button,
+.connector-actions button {
+  background: var(--foreground);
+  border: 0;
+  border-radius: 8px;
+  color: #ffffff;
+  font-weight: 800;
+  min-height: 40px;
+  padding: 0 12px;
+}
+
+.planner-actions button + button,
+.reschedule-actions button + button,
+.connector-actions button + button {
+  background: #e6eeeb;
+  color: var(--foreground);
 }
 
 .workspace-grid {
@@ -640,6 +720,10 @@ h1 {
   padding: 7px 8px;
 }
 
+.reschedule-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .routing-list {
   display: grid;
   gap: 8px;
@@ -728,7 +812,37 @@ h1 {
   padding: 10px;
 }
 
+.netsuite-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.netsuite-panel p,
+.sync-facts span {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.sync-facts {
+  display: grid;
+  gap: 6px;
+}
+
+.sync-facts span {
+  background: #f8fbfa;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: block;
+  padding: 8px;
+}
+
 @media (max-width: 1180px) {
+  .metrics-strip,
+  .planning-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .workspace-grid {
     grid-template-columns: 290px minmax(640px, 1fr);
   }
@@ -751,8 +865,13 @@ h1 {
   }
 
   .metrics-strip,
+  .planning-strip,
   .workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .day-hour-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .queue-panel,

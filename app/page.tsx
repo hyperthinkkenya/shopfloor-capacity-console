@@ -3,23 +3,31 @@
 import { useMemo, useState } from "react";
 import {
   analyzePlan,
+  buildNetSuiteUpdatePayload,
+  countManualMoves,
   days,
+  defaultCalendarHours,
   getMachine,
   getOperation,
   getSkill,
   getTool,
   getWorkOrder,
+  moveWorkOrder,
   machines,
+  netSuiteSyncDefaults,
   orderProgress,
   plans,
   priorityWeight,
+  replanToCapacity,
   recommendations,
   scenarioMeta,
   skills,
   tools,
   workOrders,
+  type CalendarHours,
   type DailyLoad,
   type DayIndex,
+  type NetSuiteSyncState,
   type PlanBlock,
   type ScenarioId,
   type WorkOrder,
@@ -40,11 +48,18 @@ export default function Home() {
     useState<ConstraintView>("machine");
   const [selectedOrderId, setSelectedOrderId] = useState(workOrders[0].id);
   const [flexHours, setFlexHours] = useState(1);
+  const [calendarHours, setCalendarHours] =
+    useState<CalendarHours>(defaultCalendarHours);
+  const [utilizationTarget, setUtilizationTarget] = useState(88);
+  const [scenarioPlans, setScenarioPlans] =
+    useState<Record<ScenarioId, PlanBlock[]>>(plans);
+  const [syncState, setSyncState] =
+    useState<NetSuiteSyncState>(netSuiteSyncDefaults);
 
-  const plan = plans[scenario];
+  const plan = scenarioPlans[scenario];
   const analysis = useMemo(
-    () => analyzePlan(plan, flexHours),
-    [flexHours, plan],
+    () => analyzePlan(plan, flexHours, calendarHours),
+    [calendarHours, flexHours, plan],
   );
   const selectedOrder = getWorkOrder(selectedOrderId) ?? workOrders[0];
   const orderState = analysis.completedOrders.find(
@@ -56,6 +71,64 @@ export default function Home() {
   const visibleOrders = [...workOrders].sort(
     (a, b) => priorityWeight(b.priority) - priorityWeight(a.priority),
   );
+  const manualMoveCount = countManualMoves(plan, plans[scenario]);
+  const updatePayload = useMemo(() => buildNetSuiteUpdatePayload(plan), [plan]);
+
+  function updatePlan(nextPlan: PlanBlock[]) {
+    setScenarioPlans((current) => ({ ...current, [scenario]: nextPlan }));
+    setSyncState((current) => ({
+      ...current,
+      pendingUpdates: countManualMoves(nextPlan, plans[scenario]),
+    }));
+  }
+
+  function shiftSelectedOrder(deltaDays: number) {
+    updatePlan(moveWorkOrder(plan, selectedOrder.id, deltaDays));
+  }
+
+  function autoReplan() {
+    const nextPlan = replanToCapacity(
+      utilizationTarget / 100,
+      calendarHours,
+      flexHours,
+    );
+    updatePlan(nextPlan);
+  }
+
+  function resetScenario() {
+    updatePlan(plans[scenario]);
+  }
+
+  function updateCalendarHour(day: DayIndex, hours: number) {
+    const nextHours = [...calendarHours] as CalendarHours;
+    nextHours[day] = hours;
+    setCalendarHours(nextHours);
+    const nextPlan = replanToCapacity(utilizationTarget / 100, nextHours, flexHours);
+    setScenarioPlans((current) => ({ ...current, [scenario]: nextPlan }));
+    setSyncState((current) => ({
+      ...current,
+      pendingUpdates: countManualMoves(nextPlan, plans[scenario]),
+    }));
+  }
+
+  function publishToNetSuite() {
+    setSyncState({
+      lastFetch: syncState.lastFetch,
+      lastPublish: `${updatePayload.length} work orders staged for NetSuite`,
+      mode: "mock",
+      pendingUpdates: 0,
+    });
+  }
+
+  function mockFetchFromNetSuite() {
+    setScenarioPlans(plans);
+    setSyncState({
+      lastFetch: "Fetched 7 mock work orders from NetSuite adapter",
+      lastPublish: syncState.lastPublish,
+      mode: "mock",
+      pendingUpdates: 0,
+    });
+  }
 
   return (
     <main className="app-shell">
@@ -106,6 +179,12 @@ export default function Home() {
           tone={analysis.peakLoad?.status === "over" ? "risk" : "warn"}
           value={`${analysis.peakLoad?.utilization ?? 0}%`}
         />
+        <Metric
+          detail={`${manualMoveCount} manual moves staged`}
+          label="Target load"
+          tone={analysis.averageUtilization > utilizationTarget ? "warn" : "good"}
+          value={`${utilizationTarget}%`}
+        />
         <div className="flex-control">
           <div>
             <span>Flex hours</span>
@@ -120,6 +199,52 @@ export default function Home() {
             type="range"
             value={flexHours}
           />
+        </div>
+      </section>
+
+      <section className="planning-strip" aria-label="Scenario planning controls">
+        <div className="planner-card planner-wide">
+          <PanelHeader label="Calendar hours" value="auto replan" />
+          <div className="day-hour-grid">
+            {days.map((day, dayIndex) => (
+              <label key={day.id}>
+                <span>{day.label}</span>
+                <input
+                  aria-label={`${day.label} calendar hours`}
+                  max="12"
+                  min="0"
+                  onChange={(event) =>
+                    updateCalendarHour(dayIndex as DayIndex, Number(event.target.value))
+                  }
+                  step="1"
+                  type="number"
+                  value={calendarHours[dayIndex]}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="planner-card">
+          <PanelHeader label="Capacity target" value={`${utilizationTarget}%`} />
+          <input
+            aria-label="Capacity utilization target"
+            max="100"
+            min="60"
+            onChange={(event) => setUtilizationTarget(Number(event.target.value))}
+            onMouseUp={autoReplan}
+            onTouchEnd={autoReplan}
+            step="1"
+            type="range"
+            value={utilizationTarget}
+          />
+        </div>
+        <div className="planner-card planner-actions">
+          <button onClick={autoReplan} type="button">
+            Auto readjust load
+          </button>
+          <button onClick={resetScenario} type="button">
+            Reset scenario
+          </button>
         </div>
       </section>
 
@@ -163,6 +288,7 @@ export default function Home() {
           {constraintView === "machine" ? (
             <MachineSchedule
               blocks={plan}
+              calendarHours={calendarHours}
               onSelectOrder={setSelectedOrderId}
               selectedOrderId={selectedOrder.id}
             />
@@ -187,6 +313,8 @@ export default function Home() {
           />
           <SelectedOrder
             blocks={selectedBlocks}
+            onMoveEarlier={() => shiftSelectedOrder(-1)}
+            onMoveLater={() => shiftSelectedOrder(1)}
             order={selectedOrder}
             status={orderState?.status ?? "unscheduled"}
           />
@@ -217,6 +345,16 @@ export default function Home() {
               <li key={item}>{item}</li>
             ))}
           </ol>
+
+          <div className="divider" />
+
+          <PanelHeader label="NetSuite connector" value={syncState.mode} />
+          <NetSuitePanel
+            onFetch={mockFetchFromNetSuite}
+            onPublish={publishToNetSuite}
+            pendingUpdates={syncState.pendingUpdates}
+            syncState={syncState}
+          />
         </aside>
       </section>
     </main>
@@ -293,10 +431,12 @@ function WorkOrderRow({
 
 function MachineSchedule({
   blocks,
+  calendarHours,
   onSelectOrder,
   selectedOrderId,
 }: {
   blocks: PlanBlock[];
+  calendarHours: CalendarHours;
   onSelectOrder: (id: string) => void;
   selectedOrderId: string;
 }) {
@@ -314,6 +454,7 @@ function MachineSchedule({
         {machines.map((machine) => (
           <MachineRow
             blocks={blocks.filter((blockItem) => blockItem.machineId === machine.id)}
+            calendarHours={calendarHours}
             key={machine.id}
             machineId={machine.id}
             onSelectOrder={onSelectOrder}
@@ -327,11 +468,13 @@ function MachineSchedule({
 
 function MachineRow({
   blocks,
+  calendarHours,
   machineId,
   onSelectOrder,
   selectedOrderId,
 }: {
   blocks: PlanBlock[];
+  calendarHours: CalendarHours;
   machineId: string;
   onSelectOrder: (id: string) => void;
   selectedOrderId: string;
@@ -347,7 +490,8 @@ function MachineRow({
       </div>
       {days.map((day, dayIndex) => {
         const dayBlocks = blocks.filter((blockItem) => blockItem.day === dayIndex);
-        const capacity = machine.availability[dayIndex] ?? 0;
+        const baseCapacity = machine.availability[dayIndex] ?? 0;
+        const capacity = baseCapacity === 0 ? 0 : Math.min(baseCapacity, calendarHours[dayIndex]);
         const dayLoad = dayBlocks.reduce((total, item) => total + item.duration, 0);
         const isOver = capacity > 0 && dayLoad > capacity;
 
@@ -492,10 +636,14 @@ function ToolBoard({ blocks }: { blocks: PlanBlock[] }) {
 
 function SelectedOrder({
   blocks,
+  onMoveEarlier,
+  onMoveLater,
   order,
   status,
 }: {
   blocks: PlanBlock[];
+  onMoveEarlier: () => void;
+  onMoveLater: () => void;
   order: WorkOrder;
   status: string;
 }) {
@@ -513,6 +661,14 @@ function SelectedOrder({
         <span>{order.quantity} units</span>
         <span>Due {days[order.dueDay].label}</span>
         <span>{order.materialStatus}</span>
+      </div>
+      <div className="reschedule-actions">
+        <button onClick={onMoveEarlier} type="button">
+          Move earlier
+        </button>
+        <button onClick={onMoveLater} type="button">
+          Move later
+        </button>
       </div>
       <div className="routing-list">
         {order.routing.map((operation) => {
@@ -537,6 +693,40 @@ function SelectedOrder({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function NetSuitePanel({
+  onFetch,
+  onPublish,
+  pendingUpdates,
+  syncState,
+}: {
+  onFetch: () => void;
+  onPublish: () => void;
+  pendingUpdates: number;
+  syncState: NetSuiteSyncState;
+}) {
+  return (
+    <div className="netsuite-panel">
+      <p>
+        Live credentials belong in a server route or function. This prototype
+        keeps the browser on mock data and stages the update payload safely.
+      </p>
+      <div className="sync-facts">
+        <span>Fetch: {syncState.lastFetch}</span>
+        <span>Publish: {syncState.lastPublish}</span>
+        <span>{pendingUpdates} schedule changes waiting</span>
+      </div>
+      <div className="connector-actions">
+        <button onClick={onFetch} type="button">
+          Fetch work orders
+        </button>
+        <button onClick={onPublish} type="button">
+          Stage NetSuite update
+        </button>
       </div>
     </div>
   );

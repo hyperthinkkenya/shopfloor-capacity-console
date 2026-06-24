@@ -58,6 +58,7 @@
 
       .topbar,
       .metrics,
+      .planning,
       .grid {
         margin: 0 auto;
         max-width: 1720px;
@@ -160,7 +161,7 @@
       .metrics {
         display: grid;
         gap: 12px;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         margin-bottom: 16px;
       }
 
@@ -168,6 +169,7 @@
       .queue,
       .schedule,
       .inspector,
+      .planner,
       .flex {
         background: rgba(255, 255, 255, 0.94);
         border: 1px solid var(--line);
@@ -227,6 +229,80 @@
       .flex input {
         accent-color: var(--teal);
         width: 100%;
+      }
+
+      .planning {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(360px, 1.4fr) minmax(220px, 0.6fr) minmax(260px, 0.7fr);
+        margin-bottom: 16px;
+      }
+
+      .planner {
+        padding: 14px;
+      }
+
+      .day-hours {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(5, minmax(64px, 1fr));
+      }
+
+      .day-hours label {
+        background: #f8fbfa;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        gap: 6px;
+        padding: 8px;
+      }
+
+      .day-hours span {
+        color: var(--text-muted);
+        font-size: 0.75rem;
+        font-weight: 800;
+      }
+
+      .day-hours input {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--foreground);
+        min-height: 34px;
+        padding: 0 8px;
+        width: 100%;
+      }
+
+      .planner > input {
+        accent-color: var(--teal);
+        width: 100%;
+      }
+
+      .planner-actions,
+      .move-actions,
+      .connector-actions {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .planner-actions button,
+      .move-actions button,
+      .connector-actions button {
+        background: var(--foreground);
+        border: 0;
+        border-radius: 8px;
+        color: #ffffff;
+        font-weight: 800;
+        min-height: 40px;
+        padding: 0 12px;
+      }
+
+      .planner-actions button + button,
+      .move-actions button + button,
+      .connector-actions button + button {
+        background: #e6eeeb;
+        color: var(--foreground);
       }
 
       .grid {
@@ -616,6 +692,10 @@
         padding: 7px 8px;
       }
 
+      .move-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .routing {
         display: grid;
         gap: 8px;
@@ -696,7 +776,37 @@
         padding: 10px;
       }
 
+      .netsuite-panel {
+        display: grid;
+        gap: 10px;
+      }
+
+      .netsuite-panel p,
+      .sync-facts span {
+        color: var(--text-muted);
+        font-size: 0.84rem;
+        line-height: 1.4;
+      }
+
+      .sync-facts {
+        display: grid;
+        gap: 6px;
+      }
+
+      .sync-facts span {
+        background: #f8fbfa;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: block;
+        padding: 8px;
+      }
+
       @media (max-width: 1180px) {
+        .metrics,
+        .planning {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
         .grid {
           grid-template-columns: 290px minmax(640px, 1fr);
         }
@@ -719,8 +829,13 @@
         }
 
         .metrics,
+        .planning,
         .grid {
           grid-template-columns: 1fr;
+        }
+
+        .day-hours {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .switcher,
@@ -752,6 +867,21 @@
 
       <section class="metrics" id="metrics"></section>
 
+      <section class="planning">
+        <article class="planner">
+          <div class="panel-title"><span>Calendar hours</span><strong>auto replan</strong></div>
+          <div class="day-hours" id="calendarHours"></div>
+        </article>
+        <article class="planner">
+          <div class="panel-title"><span>Capacity target</span><strong id="targetLabel">88%</strong></div>
+          <input aria-label="Capacity target" min="60" max="100" step="1" type="range" id="targetInput" />
+        </article>
+        <article class="planner planner-actions">
+          <button onclick="autoReplan()">Auto readjust load</button>
+          <button onclick="resetScenario()">Reset scenario</button>
+        </article>
+      </section>
+
       <section class="grid">
         <aside class="queue">
           <div class="panel-title"><span>Released work orders</span><strong>7 live</strong></div>
@@ -779,6 +909,9 @@
           <div class="divider"></div>
           <div class="panel-title"><span>Recommended moves</span><strong id="recScenario"></strong></div>
           <ol class="recommendations" id="recommendations"></ol>
+          <div class="divider"></div>
+          <div class="panel-title"><span>NetSuite connector</span><strong id="syncMode">mock</strong></div>
+          <div class="netsuite-panel" id="netsuitePanel"></div>
         </aside>
       </section>
     </main>
@@ -900,7 +1033,21 @@
         rush: ["Rush service work is feasible, but Wednesday welding becomes the constraint.", "Ask sales whether MedLine can ship Friday afternoon; otherwise add a welder on Wednesday.", "Hold the CleanPack guard rail kit at partial material status until laser time is confirmed."],
       };
 
-      const state = { scenario: "balanced", view: "machine", selected: "WO-1048", flex: 1 };
+      const originalPlans = JSON.parse(JSON.stringify(plans));
+      const state = {
+        calendarHours: [8, 8, 8, 8, 8],
+        flex: 1,
+        scenario: "balanced",
+        selected: "WO-1048",
+        sync: {
+          lastFetch: "Mock data loaded",
+          lastPublish: "Not published",
+          mode: "mock",
+          pendingUpdates: 0,
+        },
+        target: 88,
+        view: "machine",
+      };
 
       const byId = (items, id) => items.find((item) => item.id === id);
       const order = (id) => byId(workOrders, id);
@@ -910,6 +1057,8 @@
       const operation = (blockItem) => order(blockItem.workOrderId).routing.find((item) => item.id === blockItem.operationId);
       const sum = (items) => items.reduce((total, value) => total + value, 0);
       const priorityWeight = (priority) => (priority === "Hot" ? 3 : priority === "High" ? 2 : 1);
+      const machineCapacity = (resource, dayIndex) => resource.availability[dayIndex] === 0 || state.calendarHours[dayIndex] === 0 ? 0 : Math.min(resource.availability[dayIndex], state.calendarHours[dayIndex]) + state.flex;
+      const skillCapacity = (resource, dayIndex) => state.calendarHours[dayIndex] === 0 ? 0 : resource.availability[dayIndex] * (state.calendarHours[dayIndex] / 8) + Math.min(2, state.flex);
 
       function dailyLoad(id, label, day, load, capacity) {
         const utilization = capacity > 0 ? Math.round((load / capacity) * 100) : load > 0 ? 999 : 0;
@@ -921,7 +1070,7 @@
         const plan = plans[state.scenario];
         const machineLoads = machines.flatMap((resource) => days.map((_, dayIndex) => {
           const load = sum(plan.filter((item) => item.machineId === resource.id && item.day === dayIndex).map((item) => item.duration));
-          const capacity = resource.availability[dayIndex] > 0 ? resource.availability[dayIndex] + state.flex : 0;
+          const capacity = machineCapacity(resource, dayIndex);
           return dailyLoad(resource.id, resource.name, dayIndex, load, capacity);
         }));
         const skillLoads = skills.flatMap((resource) => days.map((_, dayIndex) => {
@@ -929,7 +1078,7 @@
             const opItem = operation(item);
             return opItem.skill === resource.id ? opItem.skillHours : 0;
           }));
-          return dailyLoad(resource.id, resource.label, dayIndex, load, resource.availability[dayIndex] + Math.min(2, state.flex));
+          return dailyLoad(resource.id, resource.label, dayIndex, load, skillCapacity(resource, dayIndex));
         }));
         const completed = workOrders.map((wo) => {
           const blocks = plan.filter((item) => item.workOrderId === wo.id);
@@ -944,6 +1093,61 @@
         const tight = completed.filter((item) => item.status === "tight");
         const peak = [...machineLoads, ...skillLoads].sort((a, b) => b.utilization - a.utilization)[0];
         return { machineLoads, skillLoads, completed, totalLoad, average: Math.round((totalLoad / totalCapacity) * 100), late, tight, peak, toolConflicts: toolConflicts(plan) };
+      }
+
+      function countManualMoves(plan = plans[state.scenario]) {
+        return plan.filter((item) => {
+          const original = originalPlans[state.scenario].find((candidate) => candidate.workOrderId === item.workOrderId && candidate.operationId === item.operationId);
+          return original && original.day !== item.day;
+        }).length;
+      }
+
+      function findPlacement(opItem, earliestFinish, machineBooked, skillBooked) {
+        const resource = machine(opItem.machineId);
+        const labour = skill(opItem.skill);
+        const targetRatio = Math.max(0.55, Math.min(state.target / 100, 1.1));
+        const earliestDay = Math.max(0, Math.min(days.length - 1, Math.floor(earliestFinish)));
+        let fallback = { day: earliestDay, start: machineBooked[opItem.machineId][earliestDay], note: "Placed above target to keep routing complete" };
+
+        for (let dayIndex = earliestDay; dayIndex < days.length; dayIndex += 1) {
+          const machineLimit = machineCapacity(resource, dayIndex) * targetRatio;
+          const skillLimit = skillCapacity(labour, dayIndex) * targetRatio;
+          if (machineLimit <= 0 || skillLimit <= 0) continue;
+
+          const machineLoad = machineBooked[opItem.machineId][dayIndex];
+          const skillLoad = skillBooked[opItem.skill][dayIndex];
+          fallback = { day: dayIndex, start: machineLoad, note: "Placed above target to keep routing complete" };
+
+          if (machineLoad + opItem.duration <= machineLimit && skillLoad + opItem.skillHours <= skillLimit) {
+            return { day: dayIndex, start: machineLoad, note: "" };
+          }
+        }
+
+        return fallback;
+      }
+
+      function replanToCapacity() {
+        const machineBooked = Object.fromEntries(machines.map((item) => [item.id, [0, 0, 0, 0, 0]]));
+        const skillBooked = Object.fromEntries(skills.map((item) => [item.id, [0, 0, 0, 0, 0]]));
+        const finishByOrder = {};
+        const nextPlan = [];
+        const sorted = [...workOrders].sort((a, b) => a.dueDay - b.dueDay || priorityWeight(b.priority) - priorityWeight(a.priority));
+
+        sorted.forEach((wo) => {
+          wo.routing.forEach((route) => {
+            const placement = findPlacement(route, finishByOrder[wo.id] || 0, machineBooked, skillBooked);
+            nextPlan.push(block(`auto-${wo.id}-${route.id}`, wo.id, route.id, route.machineId, placement.day, placement.start, route.duration, placement.note));
+            machineBooked[route.machineId][placement.day] += route.duration;
+            skillBooked[route.skill][placement.day] += route.skillHours;
+            finishByOrder[wo.id] = placement.day + (placement.start + route.duration) / 8;
+          });
+        });
+
+        return nextPlan;
+      }
+
+      function updatePending() {
+        state.sync.pendingUpdates = countManualMoves();
       }
 
       function toolConflicts(plan) {
@@ -971,11 +1175,13 @@
       function render() {
         renderButtons();
         renderMetrics();
+        renderPlanningControls();
         renderQueue();
         renderScheduleHeader();
         renderSelected();
         renderBottlenecks();
         renderRecommendations();
+        renderNetSuitePanel();
       }
 
       function renderButtons() {
@@ -993,8 +1199,23 @@
           <article class="metric"><span>Plant load</span><strong>${data.average}%</strong><p>${data.totalLoad.toFixed(1)} scheduled hours</p></article>
           <article class="metric ${data.late.length ? "risk" : "good"}"><span>Late risk</span><strong>${data.late.length}</strong><p>${data.tight.length} tight orders</p></article>
           <article class="metric ${data.peak.status === "over" ? "risk" : "warn"}"><span>Peak constraint</span><strong>${data.peak.utilization}%</strong><p>${data.peak.label}</p></article>
+          <article class="metric ${data.average > state.target ? "warn" : "good"}"><span>Target load</span><strong>${state.target}%</strong><p>${countManualMoves()} manual moves staged</p></article>
           <article class="flex"><div><span>Flex hours</span><strong>${state.flex}h per critical resource</strong></div><input aria-label="Flex hours" min="0" max="3" step="1" type="range" value="${state.flex}" oninput="setFlex(this.value)" /></article>
         `;
+      }
+
+      function renderPlanningControls() {
+        document.getElementById("calendarHours").innerHTML = days.map((day, dayIndex) => `
+          <label><span>${day.label}</span><input aria-label="${day.label} hours" min="0" max="12" step="1" type="number" value="${state.calendarHours[dayIndex]}" onchange="setDayHours(${dayIndex}, this.value)" /></label>
+        `).join("");
+        document.getElementById("targetLabel").textContent = `${state.target}%`;
+        const targetInput = document.getElementById("targetInput");
+        targetInput.value = state.target;
+        targetInput.oninput = (event) => {
+          state.target = Number(event.target.value);
+          document.getElementById("targetLabel").textContent = `${state.target}%`;
+        };
+        targetInput.onchange = autoReplan;
       }
 
       function renderQueue() {
@@ -1026,7 +1247,8 @@
         const body = machines.map((resource) => {
           const cells = days.map((day, dayIndex) => {
             const dayBlocks = plan.filter((item) => item.machineId === resource.id && item.day === dayIndex);
-            const capacity = resource.availability[dayIndex];
+            const baseCapacity = resource.availability[dayIndex];
+            const capacity = baseCapacity === 0 ? 0 : Math.min(baseCapacity, state.calendarHours[dayIndex]);
             const load = sum(dayBlocks.map((item) => item.duration));
             return `<div class="slot ${load > capacity && capacity > 0 ? "over" : ""} ${capacity === 0 ? "offline" : ""}">
               <span class="cap">${capacity ? `${capacity}h` : "down"}</span>
@@ -1076,6 +1298,7 @@
         document.getElementById("selected").innerHTML = `<div class="selected">
           <div class="row"><div><h3>${wo.id}</h3><p>${wo.item}</p></div><span class="pill ${status}">${status}</span></div>
           <div class="facts"><span>${wo.customer}</span><span>${wo.quantity} units</span><span>Due ${days[wo.dueDay].label}</span><span>${wo.materialStatus}</span></div>
+          <div class="move-actions"><button onclick="moveSelected(-1)">Move earlier</button><button onclick="moveSelected(1)">Move later</button></div>
           <div class="routing">${wo.routing.map((route) => {
             const scheduled = blocks.find((item) => item.operationId === route.id);
             return `<div class="route"><strong>Op ${route.step}</strong><span>${route.label}</span><small>${machine(route.machineId).name} | ${skill(route.skill).label} | ${tool(route.toolId).label}</small><em>${scheduled ? `${days[scheduled.day].label} ${scheduled.start.toFixed(1)}h` : "Not scheduled"}</em></div>`;
@@ -1098,6 +1321,22 @@
         document.getElementById("recommendations").innerHTML = recs[state.scenario].map((item) => `<li>${item}</li>`).join("");
       }
 
+      function renderNetSuitePanel() {
+        document.getElementById("syncMode").textContent = state.sync.mode;
+        document.getElementById("netsuitePanel").innerHTML = `
+          <p>Live NetSuite credentials belong in a backend function. This prototype safely stages fetch and update actions with mock data.</p>
+          <div class="sync-facts">
+            <span>Fetch: ${state.sync.lastFetch}</span>
+            <span>Publish: ${state.sync.lastPublish}</span>
+            <span>${state.sync.pendingUpdates} schedule changes waiting</span>
+          </div>
+          <div class="connector-actions">
+            <button onclick="mockFetchFromNetSuite()">Fetch work orders</button>
+            <button onclick="publishToNetSuite()">Stage NetSuite update</button>
+          </div>
+        `;
+      }
+
       function setScenario(id) {
         state.scenario = id;
         render();
@@ -1115,6 +1354,52 @@
 
       function setFlex(value) {
         state.flex = Number(value);
+        plans[state.scenario] = replanToCapacity();
+        updatePending();
+        render();
+      }
+
+      function setDayHours(dayIndex, value) {
+        state.calendarHours[dayIndex] = Number(value);
+        plans[state.scenario] = replanToCapacity();
+        updatePending();
+        render();
+      }
+
+      function autoReplan() {
+        plans[state.scenario] = replanToCapacity();
+        updatePending();
+        render();
+      }
+
+      function resetScenario() {
+        plans[state.scenario] = JSON.parse(JSON.stringify(originalPlans[state.scenario]));
+        updatePending();
+        render();
+      }
+
+      function moveSelected(deltaDays) {
+        plans[state.scenario] = plans[state.scenario].map((item) => {
+          if (item.workOrderId !== state.selected) return item;
+          const nextDay = Math.max(0, Math.min(days.length - 1, item.day + deltaDays));
+          return { ...item, day: nextDay, note: `${item.note ? `${item.note}; ` : ""}Manual move ${deltaDays > 0 ? "later" : "earlier"}` };
+        });
+        updatePending();
+        render();
+      }
+
+      function mockFetchFromNetSuite() {
+        Object.keys(plans).forEach((key) => {
+          plans[key] = JSON.parse(JSON.stringify(originalPlans[key]));
+        });
+        state.sync.lastFetch = "Fetched 7 mock work orders from NetSuite adapter";
+        state.sync.pendingUpdates = 0;
+        render();
+      }
+
+      function publishToNetSuite() {
+        state.sync.lastPublish = `${workOrders.length} work orders staged for NetSuite`;
+        state.sync.pendingUpdates = 0;
         render();
       }
 
