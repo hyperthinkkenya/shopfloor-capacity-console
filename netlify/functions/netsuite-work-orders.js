@@ -27,6 +27,9 @@ export async function handler(event) {
   }
 
   const config = readConfig();
+  config.realm = normalizeRealm(
+    config.realm || realmFromRestBaseUrl(config.restBaseUrl) || config.accountId,
+  );
   const missing = requiredConfig(config);
 
   if (missing.length > 0) {
@@ -57,6 +60,7 @@ export async function handler(event) {
 
     if (!netsuiteResponse.ok) {
       return response(netsuiteResponse.status, {
+        authContext: safeAuthContext(config),
         mode: "netsuite_error",
         status: netsuiteResponse.status,
         message: data?.title || data?.detail || text || "NetSuite request failed.",
@@ -85,11 +89,45 @@ function readConfig() {
     accountId: process.env.NETSUITE_ACCOUNT_ID || "",
     consumerKey: process.env.NETSUITE_CONSUMER_KEY || "",
     consumerSecret: process.env.NETSUITE_CONSUMER_SECRET || "",
-    realm: process.env.NETSUITE_REALM || process.env.NETSUITE_ACCOUNT_ID || "",
+    realm: process.env.NETSUITE_REALM || "",
     restBaseUrl: process.env.NETSUITE_REST_BASE_URL || "",
     tokenId: process.env.NETSUITE_TOKEN_ID || "",
     tokenSecret: process.env.NETSUITE_TOKEN_SECRET || "",
   };
+}
+
+function realmFromRestBaseUrl(restBaseUrl) {
+  try {
+    const hostname = new URL(restBaseUrl).hostname;
+    return hostname.split(".")[0] || "";
+  } catch {
+    return "";
+  }
+}
+
+function normalizeRealm(value) {
+  return String(value || "")
+    .trim()
+    .replace(/-/g, "_")
+    .toUpperCase();
+}
+
+function safeAuthContext(config) {
+  return {
+    accountId: config.accountId,
+    consumerKeyConfigured: Boolean(config.consumerKey),
+    realm: config.realm,
+    restHost: safeHost(config.restBaseUrl),
+    tokenIdConfigured: Boolean(config.tokenId),
+  };
+}
+
+function safeHost(restBaseUrl) {
+  try {
+    return new URL(restBaseUrl).hostname;
+  } catch {
+    return "invalid-url";
+  }
 }
 
 function requiredConfig(config) {
