@@ -85,6 +85,7 @@ function readConfig() {
     accountId: process.env.NETSUITE_ACCOUNT_ID || "",
     consumerKey: process.env.NETSUITE_CONSUMER_KEY || "",
     consumerSecret: process.env.NETSUITE_CONSUMER_SECRET || "",
+    realm: process.env.NETSUITE_REALM || process.env.NETSUITE_ACCOUNT_ID || "",
     restBaseUrl: process.env.NETSUITE_REST_BASE_URL || "",
     tokenId: process.env.NETSUITE_TOKEN_ID || "",
     tokenSecret: process.env.NETSUITE_TOKEN_SECRET || "",
@@ -94,6 +95,7 @@ function readConfig() {
 function requiredConfig(config) {
   return [
     ["NETSUITE_ACCOUNT_ID", config.accountId],
+    ["NETSUITE_REALM", config.realm],
     ["NETSUITE_CONSUMER_KEY", config.consumerKey],
     ["NETSUITE_CONSUMER_SECRET", config.consumerSecret],
     ["NETSUITE_TOKEN_ID", config.tokenId],
@@ -126,7 +128,7 @@ function oauthHeader(url, method, config) {
     .digest("base64");
 
   return [
-    `OAuth realm="${escapeHeader(config.accountId)}"`,
+    `OAuth realm="${escapeHeader(config.realm)}"`,
     ...Object.entries({ ...oauthParams, oauth_signature: signature }).map(
       ([key, value]) => `${key}="${escapeHeader(value)}"`,
     ),

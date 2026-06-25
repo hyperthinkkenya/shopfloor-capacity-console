@@ -60,10 +60,19 @@ For the current Netlify Function, use these names:
 ```text
 NETSUITE_ACCOUNT_ID=td3021155
 NETSUITE_REST_BASE_URL=https://td3021155.suitetalk.api.netsuite.com/services/rest
+NETSUITE_REALM=TD3021155
 NETSUITE_CONSUMER_KEY
 NETSUITE_CONSUMER_SECRET
 NETSUITE_TOKEN_ID
 NETSUITE_TOKEN_SECRET
+```
+
+For a sandbox account, NetSuite often uses a hyphen in the REST domain and an
+underscore in the OAuth realm:
+
+```text
+NETSUITE_REST_BASE_URL=https://td3021155-sb1.suitetalk.api.netsuite.com/services/rest
+NETSUITE_REALM=TD3021155_SB1
 ```
 
 After deployment, the work order endpoint is:
