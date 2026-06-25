@@ -55,6 +55,25 @@ NETSUITE_TOKEN_SECRET
 NETSUITE_RESTLET_BASE_URL
 ```
 
+For the current Netlify Function, use these names:
+
+```text
+NETSUITE_ACCOUNT_ID=td3021155
+NETSUITE_REST_BASE_URL=https://td3021155.suitetalk.api.netsuite.com/services/rest
+NETSUITE_CONSUMER_KEY
+NETSUITE_CONSUMER_SECRET
+NETSUITE_TOKEN_ID
+NETSUITE_TOKEN_SECRET
+```
+
+After deployment, the work order endpoint is:
+
+```text
+/.netlify/functions/netsuite-work-orders
+```
+
+The browser app calls this endpoint when you click **Fetch work orders**.
+
 ## Run Locally
 
 ```bash

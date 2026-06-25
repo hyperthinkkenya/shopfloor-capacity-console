@@ -1331,7 +1331,7 @@
             <span>${state.sync.pendingUpdates} schedule changes waiting</span>
           </div>
           <div class="connector-actions">
-            <button onclick="mockFetchFromNetSuite()">Fetch work orders</button>
+            <button onclick="fetchFromNetSuite()">Fetch work orders</button>
             <button onclick="publishToNetSuite()">Stage NetSuite update</button>
           </div>
         `;
@@ -1385,6 +1385,33 @@
           return { ...item, day: nextDay, note: `${item.note ? `${item.note}; ` : ""}Manual move ${deltaDays > 0 ? "later" : "earlier"}` };
         });
         updatePending();
+        render();
+      }
+
+      async function fetchFromNetSuite() {
+        state.sync.lastFetch = "Contacting NetSuite function...";
+        render();
+
+        if (window.location.protocol === "file:") {
+          state.sync.lastFetch = "Open the Netlify URL to call the NetSuite function";
+          render();
+          return;
+        }
+
+        try {
+          const response = await fetch("/.netlify/functions/netsuite-work-orders");
+          const data = await response.json();
+          if (!response.ok) {
+            state.sync.lastFetch = data.message || "NetSuite function returned an error";
+          } else if (data.mode === "connected") {
+            state.sync.lastFetch = `Fetched ${data.count} work orders from NetSuite`;
+          } else {
+            state.sync.lastFetch = data.message || "NetSuite function is not configured yet";
+          }
+        } catch (error) {
+          state.sync.lastFetch = "Could not reach the NetSuite function";
+        }
+
         render();
       }
 

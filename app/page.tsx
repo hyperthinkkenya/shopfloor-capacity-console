@@ -120,14 +120,39 @@ export default function Home() {
     });
   }
 
-  function mockFetchFromNetSuite() {
-    setScenarioPlans(plans);
-    setSyncState({
-      lastFetch: "Fetched 7 mock work orders from NetSuite adapter",
-      lastPublish: syncState.lastPublish,
-      mode: "mock",
-      pendingUpdates: 0,
-    });
+  async function fetchFromNetSuite() {
+    setSyncState((current) => ({
+      ...current,
+      lastFetch: "Contacting NetSuite function...",
+    }));
+
+    try {
+      const response = await fetch("/.netlify/functions/netsuite-work-orders");
+      const data = await response.json();
+
+      if (!response.ok) {
+        setSyncState((current) => ({
+          ...current,
+          lastFetch: data.message ?? "NetSuite function returned an error",
+        }));
+        return;
+      }
+
+      setSyncState((current) => ({
+        ...current,
+        lastFetch:
+          data.mode === "connected"
+            ? `Fetched ${data.count} work orders from NetSuite`
+            : data.message ?? "NetSuite function is not configured yet",
+        mode: data.mode === "connected" ? "connected" : "mock",
+        pendingUpdates: 0,
+      }));
+    } catch {
+      setSyncState((current) => ({
+        ...current,
+        lastFetch: "Could not reach the NetSuite function",
+      }));
+    }
   }
 
   return (
@@ -350,7 +375,7 @@ export default function Home() {
 
           <PanelHeader label="NetSuite connector" value={syncState.mode} />
           <NetSuitePanel
-            onFetch={mockFetchFromNetSuite}
+            onFetch={fetchFromNetSuite}
             onPublish={publishToNetSuite}
             pendingUpdates={syncState.pendingUpdates}
             syncState={syncState}
