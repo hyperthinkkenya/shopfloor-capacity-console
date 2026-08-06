@@ -169,7 +169,7 @@ h1 {
 .metrics-strip {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-bottom: 16px;
 }
 
@@ -289,6 +289,8 @@ h1 {
 
 .planner-actions,
 .reschedule-actions,
+.family-actions,
+.operation-actions,
 .connector-actions {
   display: grid;
   gap: 8px;
@@ -297,6 +299,8 @@ h1 {
 
 .planner-actions button,
 .reschedule-actions button,
+.family-actions button,
+.operation-actions button,
 .connector-actions button {
   background: var(--foreground);
   border: 0;
@@ -309,6 +313,8 @@ h1 {
 
 .planner-actions button + button,
 .reschedule-actions button + button,
+.family-actions button + button,
+.operation-actions button + button,
 .connector-actions button + button {
   background: #e6eeeb;
   color: var(--foreground);
@@ -408,10 +414,15 @@ h1 {
   color: var(--green);
 }
 
-.queue-meta {
+.queue-meta,
+.queue-family {
   color: var(--text-muted);
   font-size: 0.78rem;
   margin-top: 9px;
+}
+
+.queue-family {
+  margin-top: 6px;
 }
 
 .progress-line {
@@ -721,7 +732,16 @@ h1 {
 }
 
 .reschedule-actions {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.family-actions {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.family-actions button:last-child {
+  background: #ffe5ea;
+  color: var(--red);
 }
 
 .routing-list {
@@ -743,7 +763,7 @@ h1 {
 
 .routing-step strong {
   color: var(--teal);
-  grid-row: span 3;
+  grid-row: span 5;
 }
 
 .routing-step span,
@@ -753,11 +773,53 @@ h1 {
   font-style: normal;
 }
 
+.routing-step span {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  justify-content: space-between;
+}
+
+.routing-step i {
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 3px 7px;
+}
+
+.routing-ready i {
+  background: #dff6ed;
+  color: var(--green);
+}
+
+.routing-blocked {
+  border-color: #fecdd3;
+}
+
+.routing-blocked i,
+.routing-unscheduled i {
+  background: #ffe5ea;
+  color: var(--red);
+}
+
 .routing-step small,
 .routing-step em {
   color: var(--text-muted);
   font-size: 0.76rem;
   line-height: 1.35;
+}
+
+.operation-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 5px;
+}
+
+.operation-actions button {
+  border-radius: 6px;
+  font-size: 0.74rem;
+  min-height: 30px;
+  padding: 0 8px;
 }
 
 .divider {
@@ -872,6 +934,11 @@ h1 {
 
   .day-hour-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .reschedule-actions,
+  .family-actions {
+    grid-template-columns: 1fr;
   }
 
   .queue-panel,

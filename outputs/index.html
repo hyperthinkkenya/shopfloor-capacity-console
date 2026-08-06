@@ -161,7 +161,7 @@
       .metrics {
         display: grid;
         gap: 12px;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         margin-bottom: 16px;
       }
 
@@ -280,6 +280,8 @@
 
       .planner-actions,
       .move-actions,
+      .family-actions,
+      .operation-actions,
       .connector-actions {
         display: grid;
         gap: 8px;
@@ -288,6 +290,8 @@
 
       .planner-actions button,
       .move-actions button,
+      .family-actions button,
+      .operation-actions button,
       .connector-actions button {
         background: var(--foreground);
         border: 0;
@@ -300,6 +304,8 @@
 
       .planner-actions button + button,
       .move-actions button + button,
+      .family-actions button + button,
+      .operation-actions button + button,
       .connector-actions button + button {
         background: #e6eeeb;
         color: var(--foreground);
@@ -387,10 +393,15 @@
         color: var(--green);
       }
 
-      .meta {
+      .meta,
+      .assembly-meta {
         color: var(--text-muted);
         font-size: 0.78rem;
         margin-top: 9px;
+      }
+
+      .assembly-meta {
+        margin-top: 6px;
       }
 
       .progress {
@@ -693,7 +704,18 @@
       }
 
       .move-actions {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .family-actions {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .family-actions button:last-child {
+        background: #ffe5ea;
+        color: var(--red);
       }
 
       .routing {
@@ -713,7 +735,7 @@
 
       .route strong {
         color: var(--teal);
-        grid-row: span 3;
+        grid-row: span 5;
       }
 
       .route small,
@@ -723,6 +745,50 @@
         font-size: 0.76rem;
         font-style: normal;
         line-height: 1.35;
+      }
+
+      .route span {
+        align-items: center;
+        display: flex;
+        gap: 6px;
+        justify-content: space-between;
+      }
+
+      .route i {
+        border-radius: 999px;
+        font-size: 0.68rem;
+        font-style: normal;
+        font-weight: 900;
+        padding: 3px 7px;
+      }
+
+      .route.ready i {
+        background: #dff6ed;
+        color: var(--green);
+      }
+
+      .route.blocked {
+        border-color: #fecdd3;
+      }
+
+      .route.blocked i,
+      .route.unscheduled i {
+        background: #ffe5ea;
+        color: var(--red);
+      }
+
+      .operation-actions {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 5px;
+      }
+
+      .operation-actions button {
+        border-radius: 6px;
+        font-size: 0.74rem;
+        min-height: 30px;
+        padding: 0 8px;
       }
 
       .divider {
@@ -836,6 +902,11 @@
 
         .day-hours {
           grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .move-actions,
+        .family-actions {
+          grid-template-columns: 1fr;
         }
 
         .switcher,
@@ -975,37 +1046,37 @@
 
       const workOrders = [
         {
-          id: "WO-1048", netsuiteId: "NS-WO-89731", customer: "AeroMotion", item: "Pump body P-42",
+          assemblyLevel: 0, id: "WO-1048", netsuiteId: "NS-WO-89731", customer: "AeroMotion", item: "Pump body P-42",
           quantity: 48, dueDay: 2, priority: "Hot", materialStatus: "Released",
           routing: [op("op10", "10", "Rough mill", "M-CNC-01", "cnc", "T-MILL-42", 5.5, 2.5), op("op20", "20", "Finish mill", "M-CNC-02", "cnc", "T-MILL-42", 3.5, 1.5), op("op30", "30", "CMM inspect", "M-QA-01", "qa", "T-CMM-03", 1.5, 1.5)],
         },
         {
-          id: "WO-1051", netsuiteId: "NS-WO-89746", customer: "HydraValve", item: "Manifold HV-8",
+          assemblyLevel: 2, id: "WO-1051", netsuiteId: "NS-WO-89746", parentWorkOrderId: "WO-1058", customer: "HydraValve", item: "Manifold HV-8",
           quantity: 32, dueDay: 3, priority: "High", materialStatus: "Released",
           routing: [op("op10", "10", "Laser blanks", "M-LASER-01", "laser", "T-LAS-09", 4, 2), op("op20", "20", "Drill ports", "M-CNC-02", "cnc", "T-DRILL-06", 4, 2), op("op30", "30", "Tack weld", "M-WELD-01", "weld", "T-WELD-18", 3, 3)],
         },
         {
-          id: "WO-1058", netsuiteId: "NS-WO-89752", customer: "CleanPack", item: "Guard rail kit",
+          assemblyLevel: 1, id: "WO-1058", netsuiteId: "NS-WO-89752", parentWorkOrderId: "WO-1074", customer: "CleanPack", item: "Guard rail kit",
           quantity: 120, dueDay: 4, priority: "Standard", materialStatus: "Partial",
           routing: [op("op10", "10", "Laser rails", "M-LASER-01", "laser", "T-LAS-09", 5, 2.5), op("op20", "20", "Weld brackets", "M-WELD-01", "weld", "T-WELD-18", 4, 4), op("op30", "30", "Pack assembly", "M-ASSY-01", "assembly", "T-ASSY-11", 3, 3)],
         },
         {
-          id: "WO-1062", netsuiteId: "NS-WO-89757", customer: "MetroRail", item: "Bracket kit",
+          assemblyLevel: 0, id: "WO-1062", netsuiteId: "NS-WO-89757", customer: "MetroRail", item: "Bracket kit",
           quantity: 64, dueDay: 1, priority: "Hot", materialStatus: "Released",
           routing: [op("op10", "10", "Mill bracket", "M-CNC-01", "cnc", "T-MILL-42", 4, 1.8), op("op20", "20", "Weld tabs", "M-WELD-01", "weld", "T-WELD-18", 2, 2), op("op30", "30", "Final QA", "M-QA-01", "qa", "T-CMM-03", 1, 1)],
         },
         {
-          id: "WO-1067", netsuiteId: "NS-WO-89760", customer: "AgriPro", item: "Auger hub",
+          assemblyLevel: 1, id: "WO-1067", netsuiteId: "NS-WO-89760", parentWorkOrderId: "WO-1074", customer: "AgriPro", item: "Auger hub",
           quantity: 80, dueDay: 4, priority: "High", materialStatus: "Released",
           routing: [op("op10", "10", "Mill hub", "M-CNC-02", "cnc", "T-DRILL-06", 6, 2.8), op("op20", "20", "Assembly", "M-ASSY-01", "assembly", "T-ASSY-11", 4, 4), op("op30", "30", "QA release", "M-QA-01", "qa", "T-CMM-03", 1, 1)],
         },
         {
-          id: "WO-1070", netsuiteId: "NS-WO-89769", customer: "Service", item: "Rush repair kit",
+          assemblyLevel: 0, id: "WO-1070", netsuiteId: "NS-WO-89769", customer: "Service", item: "Rush repair kit",
           quantity: 12, dueDay: 3, priority: "Hot", materialStatus: "Released",
           routing: [op("op10", "10", "CNC rework", "M-CNC-01", "cnc", "T-MILL-42", 3, 1.2), op("op20", "20", "QA release", "M-QA-01", "qa", "T-CMM-03", 1.5, 1.5)],
         },
         {
-          id: "WO-1074", netsuiteId: "NS-WO-89771", customer: "MedLine", item: "Stainless frame",
+          assemblyLevel: 0, id: "WO-1074", netsuiteId: "NS-WO-89771", customer: "MedLine", item: "Stainless frame",
           quantity: 28, dueDay: 4, priority: "High", materialStatus: "Released",
           routing: [op("op10", "10", "Laser frame", "M-LASER-01", "laser", "T-LAS-09", 3, 1.5), op("op20", "20", "TIG weld", "M-WELD-01", "weld", "T-WELD-18", 5, 5), op("op30", "30", "Final QA", "M-QA-01", "qa", "T-CMM-03", 2, 2)],
         },
@@ -1051,6 +1122,21 @@
 
       const byId = (items, id) => items.find((item) => item.id === id);
       const order = (id) => byId(workOrders, id);
+      const childrenOf = (parentId) => workOrders.filter((item) => item.parentWorkOrderId === parentId);
+      const parentOf = (workOrderId) => {
+        const wo = order(workOrderId);
+        return wo?.parentWorkOrderId ? order(wo.parentWorkOrderId) : undefined;
+      };
+      const familyIds = (workOrderId) => {
+        const ids = new Set();
+        const collect = (parentId) => {
+          if (ids.has(parentId)) return;
+          ids.add(parentId);
+          childrenOf(parentId).forEach((child) => collect(child.id));
+        };
+        collect(workOrderId);
+        return [...ids];
+      };
       const machine = (id) => byId(machines, id);
       const skill = (id) => byId(skills, id);
       const tool = (id) => byId(tools, id);
@@ -1059,6 +1145,13 @@
       const priorityWeight = (priority) => (priority === "Hot" ? 3 : priority === "High" ? 2 : 1);
       const machineCapacity = (resource, dayIndex) => resource.availability[dayIndex] === 0 || state.calendarHours[dayIndex] === 0 ? 0 : Math.min(resource.availability[dayIndex], state.calendarHours[dayIndex]) + state.flex;
       const skillCapacity = (resource, dayIndex) => state.calendarHours[dayIndex] === 0 ? 0 : resource.availability[dayIndex] * (state.calendarHours[dayIndex] / 8) + Math.min(2, state.flex);
+      const absoluteStart = (item) => item.day * 8 + item.start;
+      const absoluteFinish = (item) => absoluteStart(item) + item.duration;
+      const splitAbsoluteTime = (value) => {
+        const bounded = Math.max(0, Math.min((days.length - 1) * 8, value));
+        const day = Math.floor(bounded / 8);
+        return { day, start: Number((bounded - day * 8).toFixed(2)) };
+      };
 
       function dailyLoad(id, label, day, load, capacity) {
         const utilization = capacity > 0 ? Math.round((load / capacity) * 100) : load > 0 ? 999 : 0;
@@ -1092,14 +1185,68 @@
         const late = completed.filter((item) => item.status === "late");
         const tight = completed.filter((item) => item.status === "tight");
         const peak = [...machineLoads, ...skillLoads].sort((a, b) => b.utilization - a.utilization)[0];
-        return { machineLoads, skillLoads, completed, totalLoad, average: Math.round((totalLoad / totalCapacity) * 100), late, tight, peak, toolConflicts: toolConflicts(plan) };
+        const routingSequences = validateRoutingSequences(plan);
+        const sequenceViolations = routingSequences.filter((item) => item.status === "blocked");
+        return { machineLoads, skillLoads, completed, totalLoad, average: Math.round((totalLoad / totalCapacity) * 100), late, tight, peak, routingSequences, sequenceViolations, toolConflicts: toolConflicts(plan) };
+      }
+
+      function validateRoutingSequences(plan) {
+        return workOrders.flatMap((wo) => {
+          let previousBlock;
+          return wo.routing.map((route) => {
+            const currentBlock = plan.find((item) => item.workOrderId === wo.id && item.operationId === route.id);
+            if (!currentBlock) {
+              return { message: "Operation is not scheduled.", operationId: route.id, predecessorId: previousBlock?.operationId, status: "unscheduled", workOrderId: wo.id };
+            }
+            const start = absoluteStart(currentBlock);
+            const finish = absoluteFinish(currentBlock);
+            const predecessorFinish = previousBlock ? absoluteFinish(previousBlock) : 0;
+            const blocked = Boolean(previousBlock && start < predecessorFinish);
+            const status = {
+              finish,
+              message: blocked ? "Starts before the previous routing operation is complete." : previousBlock ? "Ready after predecessor." : "First routing operation.",
+              operationId: route.id,
+              predecessorId: previousBlock?.operationId,
+              start,
+              status: blocked ? "blocked" : "ready",
+              workOrderId: wo.id,
+            };
+            previousBlock = currentBlock;
+            return status;
+          });
+        });
+      }
+
+      function enforceWorkOrderSequence(plan, workOrderId) {
+        const wo = order(workOrderId);
+        const nextPlan = plan.map((item) => ({ ...item }));
+        let previousFinish = 0;
+        wo.routing.forEach((route) => {
+          const index = nextPlan.findIndex((item) => item.workOrderId === wo.id && item.operationId === route.id);
+          if (index === -1) return;
+          const current = nextPlan[index];
+          if (absoluteStart(current) < previousFinish) {
+            const placement = splitAbsoluteTime(previousFinish);
+            nextPlan[index] = { ...current, day: placement.day, start: placement.start, note: `${current.note ? `${current.note}; ` : ""}Sequence adjusted after predecessor` };
+          }
+          previousFinish = absoluteFinish(nextPlan[index]);
+        });
+        return nextPlan;
+      }
+
+      function enforceAllRoutingSequences(plan) {
+        return workOrders.reduce((nextPlan, wo) => enforceWorkOrderSequence(nextPlan, wo.id), plan);
       }
 
       function countManualMoves(plan = plans[state.scenario]) {
-        return plan.filter((item) => {
+        const changed = plan.filter((item) => {
           const original = originalPlans[state.scenario].find((candidate) => candidate.workOrderId === item.workOrderId && candidate.operationId === item.operationId);
-          return original && original.day !== item.day;
+          return original && (original.day !== item.day || original.start !== item.start);
         }).length;
+        const removed = originalPlans[state.scenario].filter((original) =>
+          !plan.some((item) => item.workOrderId === original.workOrderId && item.operationId === original.operationId)
+        ).length;
+        return changed + removed;
       }
 
       function findPlacement(opItem, earliestFinish, machineBooked, skillBooked) {
@@ -1200,6 +1347,7 @@
           <article class="metric ${data.late.length ? "risk" : "good"}"><span>Late risk</span><strong>${data.late.length}</strong><p>${data.tight.length} tight orders</p></article>
           <article class="metric ${data.peak.status === "over" ? "risk" : "warn"}"><span>Peak constraint</span><strong>${data.peak.utilization}%</strong><p>${data.peak.label}</p></article>
           <article class="metric ${data.average > state.target ? "warn" : "good"}"><span>Target load</span><strong>${state.target}%</strong><p>${countManualMoves()} manual moves staged</p></article>
+          <article class="metric ${data.sequenceViolations.length ? "risk" : "good"}"><span>Sequence breaks</span><strong>${data.sequenceViolations.length}</strong><p>routing precedence checks</p></article>
           <article class="flex"><div><span>Flex hours</span><strong>${state.flex}h per critical resource</strong></div><input aria-label="Flex hours" min="0" max="3" step="1" type="range" value="${state.flex}" oninput="setFlex(this.value)" /></article>
         `;
       }
@@ -1220,12 +1368,24 @@
 
       function renderQueue() {
         const plan = plans[state.scenario];
-        const rows = [...workOrders].sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority)).map((wo) => {
+        const visibleOrders = [];
+        const appendOrder = (wo) => {
+          visibleOrders.push(wo);
+          childrenOf(wo.id).sort((a, b) => a.dueDay - b.dueDay).forEach(appendOrder);
+        };
+        workOrders
+          .filter((wo) => !wo.parentWorkOrderId)
+          .sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority) || a.dueDay - b.dueDay)
+          .forEach(appendOrder);
+
+        const rows = visibleOrders.map((wo) => {
           const progress = Math.round((wo.routing.filter((route) => plan.some((item) => item.workOrderId === wo.id && item.operationId === route.id)).length / wo.routing.length) * 100);
-          return `<button class="order ${state.selected === wo.id ? "active" : ""}" onclick="selectOrder('${wo.id}')">
+          const familyLabel = wo.parentWorkOrderId ? `Child of ${wo.parentWorkOrderId}` : childrenOf(wo.id).length ? `${childrenOf(wo.id).length} child orders` : "Independent assembly";
+          return `<button class="order ${state.selected === wo.id ? "active" : ""}" onclick="selectOrder('${wo.id}')" style="padding-left:${12 + wo.assemblyLevel * 14}px">
             <div class="row"><strong>${wo.id}</strong><span class="pill ${wo.priority.toLowerCase()}">${wo.priority}</span></div>
             <span class="order-name">${wo.item}</span>
             <div class="row meta"><span>${wo.customer}</span><span>Due ${days[wo.dueDay].label}</span></div>
+            <div class="assembly-meta"><span>${familyLabel}</span></div>
             <div class="progress"><span style="width:${progress}%"></span></div>
           </button>`;
         });
@@ -1295,13 +1455,20 @@
         const status = data.completed.find((item) => item.id === wo.id)?.status || "unscheduled";
         document.getElementById("selectedNetSuite").textContent = wo.netsuiteId;
         const blocks = plans[state.scenario].filter((item) => item.workOrderId === wo.id);
+        const sequenceStatuses = data.routingSequences.filter((item) => item.workOrderId === wo.id);
+        const parent = parentOf(wo.id);
+        const children = childrenOf(wo.id);
+        const familySize = familyIds(wo.id).length;
         document.getElementById("selected").innerHTML = `<div class="selected">
           <div class="row"><div><h3>${wo.id}</h3><p>${wo.item}</p></div><span class="pill ${status}">${status}</span></div>
-          <div class="facts"><span>${wo.customer}</span><span>${wo.quantity} units</span><span>Due ${days[wo.dueDay].label}</span><span>${wo.materialStatus}</span></div>
-          <div class="move-actions"><button onclick="moveSelected(-1)">Move earlier</button><button onclick="moveSelected(1)">Move later</button></div>
+          <div class="facts"><span>${wo.customer}</span><span>${wo.quantity} units</span><span>Due ${days[wo.dueDay].label}</span><span>${wo.materialStatus}</span><span>Level ${wo.assemblyLevel}</span>${parent ? `<span>Child of ${parent.id}</span>` : ""}${children.length ? `<span>${children.length} direct children</span>` : ""}</div>
+          <div class="move-actions"><button onclick="moveSelected(-1)">Move earlier</button><button onclick="moveSelected(1)">Move later</button><button onclick="repairSequence()">Repair sequence</button></div>
+          <div class="family-actions"><button onclick="moveFamily(-1)">Move family earlier</button><button onclick="moveFamily(1)">Move family later</button><button onclick="removeFamily()">Remove family (${familySize})</button></div>
           <div class="routing">${wo.routing.map((route) => {
             const scheduled = blocks.find((item) => item.operationId === route.id);
-            return `<div class="route"><strong>Op ${route.step}</strong><span>${route.label}</span><small>${machine(route.machineId).name} | ${skill(route.skill).label} | ${tool(route.toolId).label}</small><em>${scheduled ? `${days[scheduled.day].label} ${scheduled.start.toFixed(1)}h` : "Not scheduled"}</em></div>`;
+            const sequence = sequenceStatuses.find((item) => item.operationId === route.id);
+            const sequenceStatus = sequence?.status || "unscheduled";
+            return `<div class="route ${sequenceStatus}"><strong>Op ${route.step}</strong><span>${route.label}<i>${sequenceStatus}</i></span><small>${machine(route.machineId).name} | ${skill(route.skill).label} | ${tool(route.toolId).label}</small><em>${scheduled ? `${days[scheduled.day].label} ${scheduled.start.toFixed(1)}h` : "Not scheduled"}</em><small>${sequence?.message || ""}</small><div class="operation-actions"><button onclick="moveOperationChain('${route.id}', -1)">Chain earlier</button><button onclick="moveOperationChain('${route.id}', 1)">Chain later</button></div></div>`;
           }).join("")}</div>
         </div>`;
       }
@@ -1313,7 +1480,9 @@
         const group = (title, rows, empty) => `<div class="constraint-group"><span>${title}</span>${rows.length ? rows.map((item) => `<div class="constraint"><strong>${item.label}</strong><span>${days[item.day].label} at ${item.utilization}%</span></div>`).join("") : `<p>${empty}</p>`}</div>`;
         const toolRows = data.toolConflicts.slice(0, 3);
         const toolsHtml = `<div class="constraint-group"><span>Tools</span>${toolRows.length ? toolRows.map((item) => `<div class="constraint"><strong>${item.tool}</strong><span>${days[item.day].label}: ${item.orders.join(", ")}</span></div>`).join("") : "<p>Tooling has no overlapping bookings.</p>"}</div>`;
-        document.getElementById("bottlenecks").innerHTML = group("Machine", machineOver, "Machine capacity is clear.") + group("Labour", skillOver, "Labour capacity is clear.") + toolsHtml;
+        const sequenceRows = data.sequenceViolations.slice(0, 3);
+        const sequenceHtml = `<div class="constraint-group"><span>Routing sequence</span>${sequenceRows.length ? sequenceRows.map((item) => `<div class="constraint"><strong>${item.workOrderId}</strong><span>${item.message}</span></div>`).join("") : "<p>All routed operations follow their predecessor sequence.</p>"}</div>`;
+        document.getElementById("bottlenecks").innerHTML = group("Machine", machineOver, "Machine capacity is clear.") + group("Labour", skillOver, "Labour capacity is clear.") + toolsHtml + sequenceHtml;
       }
 
       function renderRecommendations() {
@@ -1379,11 +1548,56 @@
       }
 
       function moveSelected(deltaDays) {
-        plans[state.scenario] = plans[state.scenario].map((item) => {
+        const movedPlan = plans[state.scenario].map((item) => {
           if (item.workOrderId !== state.selected) return item;
           const nextDay = Math.max(0, Math.min(days.length - 1, item.day + deltaDays));
           return { ...item, day: nextDay, note: `${item.note ? `${item.note}; ` : ""}Manual move ${deltaDays > 0 ? "later" : "earlier"}` };
         });
+        plans[state.scenario] = enforceWorkOrderSequence(movedPlan, state.selected);
+        updatePending();
+        render();
+      }
+
+      function moveOperationChain(operationId, deltaDays) {
+        const wo = order(state.selected);
+        const operationIndex = wo.routing.findIndex((route) => route.id === operationId);
+        if (operationIndex === -1) return;
+        const movedPlan = plans[state.scenario].map((item) => {
+          if (item.workOrderId !== state.selected) return item;
+          const itemOperationIndex = wo.routing.findIndex((route) => route.id === item.operationId);
+          if (itemOperationIndex < operationIndex) return item;
+          const nextDay = Math.max(0, Math.min(days.length - 1, item.day + deltaDays));
+          return { ...item, day: nextDay, note: `${item.note ? `${item.note}; ` : ""}Operation chain move ${deltaDays > 0 ? "later" : "earlier"}` };
+        });
+        plans[state.scenario] = enforceWorkOrderSequence(movedPlan, state.selected);
+        updatePending();
+        render();
+      }
+
+      function moveFamily(deltaDays) {
+        const ids = new Set(familyIds(state.selected));
+        let movedPlan = plans[state.scenario].map((item) => {
+          if (!ids.has(item.workOrderId)) return item;
+          const nextDay = Math.max(0, Math.min(days.length - 1, item.day + deltaDays));
+          return { ...item, day: nextDay, note: `${item.note ? `${item.note}; ` : ""}Assembly family move ${deltaDays > 0 ? "later" : "earlier"}` };
+        });
+        ids.forEach((id) => {
+          movedPlan = enforceWorkOrderSequence(movedPlan, id);
+        });
+        plans[state.scenario] = movedPlan;
+        updatePending();
+        render();
+      }
+
+      function removeFamily() {
+        const ids = new Set(familyIds(state.selected));
+        plans[state.scenario] = plans[state.scenario].filter((item) => !ids.has(item.workOrderId));
+        updatePending();
+        render();
+      }
+
+      function repairSequence() {
+        plans[state.scenario] = enforceAllRoutingSequences(plans[state.scenario]);
         updatePending();
         render();
       }

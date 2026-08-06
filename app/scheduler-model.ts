@@ -14,8 +14,10 @@ export type Operation = {
 };
 
 export type WorkOrder = {
+  assemblyLevel: number;
   id: string;
   netsuiteId: string;
+  parentWorkOrderId?: string;
   customer: string;
   item: string;
   quantity: number;
@@ -65,6 +67,16 @@ export type DailyLoad = {
   capacity: number;
   utilization: number;
   status: "open" | "full" | "over";
+};
+
+export type RoutingSequenceStatus = {
+  finish?: number;
+  message: string;
+  operationId: string;
+  predecessorId?: string;
+  start?: number;
+  status: "ready" | "blocked" | "unscheduled";
+  workOrderId: string;
 };
 
 export type CalendarHours = [number, number, number, number, number];
@@ -178,6 +190,7 @@ export const tools: Tool[] = [
 
 export const workOrders: WorkOrder[] = [
   {
+    assemblyLevel: 0,
     id: "WO-1048",
     netsuiteId: "NS-WO-89731",
     customer: "AeroMotion",
@@ -193,8 +206,10 @@ export const workOrders: WorkOrder[] = [
     ],
   },
   {
+    assemblyLevel: 2,
     id: "WO-1051",
     netsuiteId: "NS-WO-89746",
+    parentWorkOrderId: "WO-1058",
     customer: "HydraValve",
     item: "Manifold HV-8",
     quantity: 32,
@@ -208,8 +223,10 @@ export const workOrders: WorkOrder[] = [
     ],
   },
   {
+    assemblyLevel: 1,
     id: "WO-1058",
     netsuiteId: "NS-WO-89752",
+    parentWorkOrderId: "WO-1074",
     customer: "CleanPack",
     item: "Guard rail kit",
     quantity: 120,
@@ -223,6 +240,7 @@ export const workOrders: WorkOrder[] = [
     ],
   },
   {
+    assemblyLevel: 0,
     id: "WO-1062",
     netsuiteId: "NS-WO-89757",
     customer: "MetroRail",
@@ -238,8 +256,10 @@ export const workOrders: WorkOrder[] = [
     ],
   },
   {
+    assemblyLevel: 1,
     id: "WO-1067",
     netsuiteId: "NS-WO-89760",
+    parentWorkOrderId: "WO-1074",
     customer: "AgriPro",
     item: "Auger hub",
     quantity: 80,
@@ -253,6 +273,7 @@ export const workOrders: WorkOrder[] = [
     ],
   },
   {
+    assemblyLevel: 0,
     id: "WO-1070",
     netsuiteId: "NS-WO-89769",
     customer: "Service",
@@ -267,6 +288,7 @@ export const workOrders: WorkOrder[] = [
     ],
   },
   {
+    assemblyLevel: 0,
     id: "WO-1074",
     netsuiteId: "NS-WO-89771",
     customer: "MedLine",
@@ -374,6 +396,30 @@ export function getWorkOrder(id: string) {
   return workOrders.find((order) => order.id === id);
 }
 
+export function getParentWorkOrder(workOrderId: string) {
+  const order = getWorkOrder(workOrderId);
+  return order?.parentWorkOrderId ? getWorkOrder(order.parentWorkOrderId) : undefined;
+}
+
+export function getChildWorkOrders(parentWorkOrderId: string) {
+  return workOrders.filter(
+    (order) => order.parentWorkOrderId === parentWorkOrderId,
+  );
+}
+
+export function getWorkOrderFamilyIds(workOrderId: string): string[] {
+  const familyIds = new Set<string>();
+
+  function collectChildren(parentId: string) {
+    if (familyIds.has(parentId)) return;
+    familyIds.add(parentId);
+    getChildWorkOrders(parentId).forEach((child) => collectChildren(child.id));
+  }
+
+  collectChildren(workOrderId);
+  return Array.from(familyIds);
+}
+
 export function getMachine(id: string) {
   return machines.find((machine) => machine.id === id);
 }
@@ -458,6 +504,10 @@ export function analyzePlan(
   const peakLoad = [...machineLoads, ...skillLoads].sort(
     (a, b) => b.utilization - a.utilization,
   )[0];
+  const routingSequences = validateRoutingSequences(blocks);
+  const sequenceViolations = routingSequences.filter(
+    (item) => item.status === "blocked",
+  );
 
   return {
     averageUtilization,
@@ -465,6 +515,8 @@ export function analyzePlan(
     lateOrders,
     machineLoads,
     peakLoad,
+    routingSequences,
+    sequenceViolations,
     skillLoads,
     tightOrders,
     toolConflicts: findToolConflicts(blocks),
@@ -531,7 +583,7 @@ export function moveWorkOrder(
   workOrderId: string,
   deltaDays: number,
 ): PlanBlock[] {
-  return blocks.map((item) => {
+  const movedBlocks = blocks.map((item) => {
     if (item.workOrderId !== workOrderId) return item;
     const nextDay = Math.max(0, Math.min(days.length - 1, item.day + deltaDays)) as DayIndex;
     return {
@@ -543,17 +595,181 @@ export function moveWorkOrder(
           : `${item.note ? `${item.note}; ` : ""}Manual move ${deltaDays > 0 ? "later" : "earlier"}`,
     };
   });
+
+  return enforceWorkOrderSequence(movedBlocks, workOrderId);
+}
+
+export function moveOperationAndSuccessors(
+  blocks: PlanBlock[],
+  workOrderId: string,
+  operationId: string,
+  deltaDays: number,
+): PlanBlock[] {
+  const order = getWorkOrder(workOrderId);
+  if (!order) return blocks;
+
+  const operationIndex = order.routing.findIndex(
+    (operation) => operation.id === operationId,
+  );
+  if (operationIndex === -1) return blocks;
+
+  const movedBlocks = blocks.map((item) => {
+    if (item.workOrderId !== workOrderId) return item;
+    const itemOperationIndex = order.routing.findIndex(
+      (operation) => operation.id === item.operationId,
+    );
+    if (itemOperationIndex < operationIndex) return item;
+
+    const nextDay = clampDay(item.day + deltaDays);
+    return {
+      ...item,
+      day: nextDay,
+      note:
+        deltaDays === 0
+          ? item.note
+          : `${item.note ? `${item.note}; ` : ""}Operation chain move ${deltaDays > 0 ? "later" : "earlier"}`,
+    };
+  });
+
+  return enforceWorkOrderSequence(movedBlocks, workOrderId);
+}
+
+export function moveWorkOrderFamily(
+  blocks: PlanBlock[],
+  workOrderId: string,
+  deltaDays: number,
+): PlanBlock[] {
+  const familyIds = getWorkOrderFamilyIds(workOrderId);
+  const familySet = new Set(familyIds);
+  const movedBlocks = blocks.map((item) => {
+    if (!familySet.has(item.workOrderId)) return item;
+    const nextDay = clampDay(item.day + deltaDays);
+    return {
+      ...item,
+      day: nextDay,
+      note:
+        deltaDays === 0
+          ? item.note
+          : `${item.note ? `${item.note}; ` : ""}Assembly family move ${deltaDays > 0 ? "later" : "earlier"}`,
+    };
+  });
+
+  return familyIds.reduce(
+    (nextBlocks, familyId) => enforceWorkOrderSequence(nextBlocks, familyId),
+    movedBlocks,
+  );
+}
+
+export function removeWorkOrderFamily(
+  blocks: PlanBlock[],
+  workOrderId: string,
+): PlanBlock[] {
+  const familySet = new Set(getWorkOrderFamilyIds(workOrderId));
+  return blocks.filter((item) => !familySet.has(item.workOrderId));
+}
+
+export function enforceWorkOrderSequence(
+  blocks: PlanBlock[],
+  workOrderId: string,
+): PlanBlock[] {
+  const order = getWorkOrder(workOrderId);
+  if (!order) return blocks;
+
+  const nextBlocks = blocks.map((item) => ({ ...item }));
+  let previousFinish = 0;
+
+  order.routing.forEach((operation) => {
+    const blockIndex = nextBlocks.findIndex(
+      (item) => item.workOrderId === order.id && item.operationId === operation.id,
+    );
+    if (blockIndex === -1) return;
+
+    const currentBlock = nextBlocks[blockIndex];
+    if (absoluteStart(currentBlock) < previousFinish) {
+      const placement = splitAbsoluteTime(previousFinish);
+      nextBlocks[blockIndex] = {
+        ...currentBlock,
+        day: placement.day,
+        note: `${currentBlock.note ? `${currentBlock.note}; ` : ""}Sequence adjusted after predecessor`,
+        start: placement.start,
+      };
+    }
+
+    previousFinish = absoluteFinish(nextBlocks[blockIndex]);
+  });
+
+  return nextBlocks;
+}
+
+export function enforceAllRoutingSequences(blocks: PlanBlock[]) {
+  return workOrders.reduce(
+    (nextBlocks, order) => enforceWorkOrderSequence(nextBlocks, order.id),
+    blocks,
+  );
+}
+
+export function validateRoutingSequences(blocks: PlanBlock[]): RoutingSequenceStatus[] {
+  return workOrders.flatMap((order) => {
+    let previousBlock: PlanBlock | undefined;
+    return order.routing.map((operation) => {
+      const currentBlock = blocks.find(
+        (item) => item.workOrderId === order.id && item.operationId === operation.id,
+      );
+
+      if (!currentBlock) {
+        return {
+          message: "Operation is not scheduled.",
+          operationId: operation.id,
+          predecessorId: previousBlock?.operationId,
+          status: "unscheduled" as const,
+          workOrderId: order.id,
+        };
+      }
+
+      const start = absoluteStart(currentBlock);
+      const finish = absoluteFinish(currentBlock);
+      const predecessorFinish = previousBlock ? absoluteFinish(previousBlock) : 0;
+      const isBlocked = Boolean(previousBlock && start < predecessorFinish);
+      const sequenceStatus: RoutingSequenceStatus = {
+        finish,
+        message: isBlocked
+          ? "Starts before the previous routing operation is complete."
+          : previousBlock
+            ? "Ready after predecessor."
+            : "First routing operation.",
+        operationId: operation.id,
+        predecessorId: previousBlock?.operationId,
+        start,
+        status: isBlocked ? "blocked" : "ready",
+        workOrderId: order.id,
+      };
+
+      previousBlock = currentBlock;
+      return sequenceStatus;
+    });
+  });
 }
 
 export function countManualMoves(plan: PlanBlock[], originalPlan: PlanBlock[]) {
-  return plan.filter((item) => {
+  const changedBlocks = plan.filter((item) => {
     const original = originalPlan.find(
       (candidate) =>
         candidate.workOrderId === item.workOrderId &&
         candidate.operationId === item.operationId,
     );
-    return original && original.day !== item.day;
+    return original && (original.day !== item.day || original.start !== item.start);
   }).length;
+
+  const removedBlocks = originalPlan.filter(
+    (original) =>
+      !plan.some(
+        (item) =>
+          item.workOrderId === original.workOrderId &&
+          item.operationId === original.operationId,
+      ),
+  ).length;
+
+  return changedBlocks + removedBlocks;
 }
 
 export function buildNetSuiteUpdatePayload(blocks: PlanBlock[]) {
@@ -615,6 +831,27 @@ function block(
   note?: string,
 ): PlanBlock {
   return { id, workOrderId, operationId, machineId, day, start, duration, note };
+}
+
+function absoluteStart(blockItem: PlanBlock) {
+  return blockItem.day * 8 + blockItem.start;
+}
+
+function absoluteFinish(blockItem: PlanBlock) {
+  return absoluteStart(blockItem) + blockItem.duration;
+}
+
+function splitAbsoluteTime(value: number) {
+  const boundedValue = Math.max(0, Math.min((days.length - 1) * 8, value));
+  const day = Math.floor(boundedValue / 8) as DayIndex;
+  return {
+    day,
+    start: Number((boundedValue - day * 8).toFixed(2)),
+  };
+}
+
+function clampDay(value: number) {
+  return Math.max(0, Math.min(days.length - 1, value)) as DayIndex;
 }
 
 function toDailyLoad(

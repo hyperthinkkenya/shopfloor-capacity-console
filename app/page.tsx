@@ -7,12 +7,18 @@ import {
   countManualMoves,
   days,
   defaultCalendarHours,
+  enforceAllRoutingSequences,
+  getChildWorkOrders,
   getMachine,
   getOperation,
+  getParentWorkOrder,
   getSkill,
   getTool,
   getWorkOrder,
+  getWorkOrderFamilyIds,
+  moveOperationAndSuccessors,
   moveWorkOrder,
+  moveWorkOrderFamily,
   machines,
   netSuiteSyncDefaults,
   orderProgress,
@@ -20,6 +26,7 @@ import {
   priorityWeight,
   replanToCapacity,
   recommendations,
+  removeWorkOrderFamily,
   scenarioMeta,
   skills,
   tools,
@@ -29,6 +36,7 @@ import {
   type DayIndex,
   type NetSuiteSyncState,
   type PlanBlock,
+  type RoutingSequenceStatus,
   type ScenarioId,
   type WorkOrder,
 } from "./scheduler-model";
@@ -68,9 +76,32 @@ export default function Home() {
   const selectedBlocks = plan.filter(
     (block) => block.workOrderId === selectedOrder.id,
   );
-  const visibleOrders = [...workOrders].sort(
-    (a, b) => priorityWeight(b.priority) - priorityWeight(a.priority),
+  const selectedSequences = analysis.routingSequences.filter(
+    (item) => item.workOrderId === selectedOrder.id,
   );
+  const parentOrder = getParentWorkOrder(selectedOrder.id);
+  const childOrders = getChildWorkOrders(selectedOrder.id);
+  const familyIds = getWorkOrderFamilyIds(selectedOrder.id);
+  const visibleOrders = useMemo(() => {
+    const rows: WorkOrder[] = [];
+    const rootOrders = workOrders
+      .filter((order) => !order.parentWorkOrderId)
+      .sort((a, b) => {
+        const priorityDelta = priorityWeight(b.priority) - priorityWeight(a.priority);
+        if (priorityDelta !== 0) return priorityDelta;
+        return a.dueDay - b.dueDay;
+      });
+
+    function appendOrder(order: WorkOrder) {
+      rows.push(order);
+      getChildWorkOrders(order.id)
+        .sort((a, b) => a.dueDay - b.dueDay)
+        .forEach(appendOrder);
+    }
+
+    rootOrders.forEach(appendOrder);
+    return rows;
+  }, []);
   const manualMoveCount = countManualMoves(plan, plans[scenario]);
   const updatePayload = useMemo(() => buildNetSuiteUpdatePayload(plan), [plan]);
 
@@ -86,6 +117,20 @@ export default function Home() {
     updatePlan(moveWorkOrder(plan, selectedOrder.id, deltaDays));
   }
 
+  function shiftOperationChain(operationId: string, deltaDays: number) {
+    updatePlan(
+      moveOperationAndSuccessors(plan, selectedOrder.id, operationId, deltaDays),
+    );
+  }
+
+  function shiftAssemblyFamily(deltaDays: number) {
+    updatePlan(moveWorkOrderFamily(plan, selectedOrder.id, deltaDays));
+  }
+
+  function removeAssemblyFamily() {
+    updatePlan(removeWorkOrderFamily(plan, selectedOrder.id));
+  }
+
   function autoReplan() {
     const nextPlan = replanToCapacity(
       utilizationTarget / 100,
@@ -97,6 +142,10 @@ export default function Home() {
 
   function resetScenario() {
     updatePlan(plans[scenario]);
+  }
+
+  function repairRoutingSequence() {
+    updatePlan(enforceAllRoutingSequences(plan));
   }
 
   function updateCalendarHour(day: DayIndex, hours: number) {
@@ -209,6 +258,12 @@ export default function Home() {
           label="Target load"
           tone={analysis.averageUtilization > utilizationTarget ? "warn" : "good"}
           value={`${utilizationTarget}%`}
+        />
+        <Metric
+          detail="routing precedence checks"
+          label="Sequence breaks"
+          tone={analysis.sequenceViolations.length > 0 ? "risk" : "good"}
+          value={`${analysis.sequenceViolations.length}`}
         />
         <div className="flex-control">
           <div>
@@ -338,9 +393,18 @@ export default function Home() {
           />
           <SelectedOrder
             blocks={selectedBlocks}
+            childOrders={childOrders}
+            familySize={familyIds.length}
             onMoveEarlier={() => shiftSelectedOrder(-1)}
+            onMoveFamilyEarlier={() => shiftAssemblyFamily(-1)}
+            onMoveFamilyLater={() => shiftAssemblyFamily(1)}
             onMoveLater={() => shiftSelectedOrder(1)}
+            onMoveOperationChain={shiftOperationChain}
+            onRepairSequence={repairRoutingSequence}
+            onRemoveFamily={removeAssemblyFamily}
             order={selectedOrder}
+            parentOrder={parentOrder}
+            sequenceStatuses={selectedSequences}
             status={orderState?.status ?? "unscheduled"}
           />
 
@@ -358,6 +422,7 @@ export default function Home() {
             title="Labour"
           />
           <ToolConflictList conflicts={analysis.toolConflicts} />
+          <SequenceConflictList conflicts={analysis.sequenceViolations} />
 
           <div className="divider" />
 
@@ -428,12 +493,14 @@ function WorkOrderRow({
 }) {
   const progress = orderProgress(order.id, blocks);
   const due = days[order.dueDay];
+  const childCount = getChildWorkOrders(order.id).length;
 
   return (
     <button
       aria-pressed={isSelected}
       className="queue-row"
       onClick={onSelect}
+      style={{ paddingLeft: `${12 + order.assemblyLevel * 14}px` }}
       type="button"
     >
       <div className="queue-row-top">
@@ -446,6 +513,17 @@ function WorkOrderRow({
       <div className="queue-meta">
         <span>{order.customer}</span>
         <span>Due {due.label}</span>
+      </div>
+      <div className="queue-family">
+        {order.parentWorkOrderId ? (
+          <span>Child of {order.parentWorkOrderId}</span>
+        ) : (
+          <span>
+            {childCount
+              ? `${childCount} child orders`
+              : "Independent assembly"}
+          </span>
+        )}
       </div>
       <div className="progress-line" aria-label={`${progress}% routed`}>
         <span style={{ width: `${progress}%` }} />
@@ -661,15 +739,33 @@ function ToolBoard({ blocks }: { blocks: PlanBlock[] }) {
 
 function SelectedOrder({
   blocks,
+  childOrders,
+  familySize,
   onMoveEarlier,
+  onMoveFamilyEarlier,
+  onMoveFamilyLater,
   onMoveLater,
+  onMoveOperationChain,
+  onRepairSequence,
+  onRemoveFamily,
   order,
+  parentOrder,
+  sequenceStatuses,
   status,
 }: {
   blocks: PlanBlock[];
+  childOrders: WorkOrder[];
+  familySize: number;
   onMoveEarlier: () => void;
+  onMoveFamilyEarlier: () => void;
+  onMoveFamilyLater: () => void;
   onMoveLater: () => void;
+  onMoveOperationChain: (operationId: string, deltaDays: number) => void;
+  onRepairSequence: () => void;
+  onRemoveFamily: () => void;
   order: WorkOrder;
+  parentOrder?: WorkOrder;
+  sequenceStatuses: RoutingSequenceStatus[];
   status: string;
 }) {
   return (
@@ -686,6 +782,11 @@ function SelectedOrder({
         <span>{order.quantity} units</span>
         <span>Due {days[order.dueDay].label}</span>
         <span>{order.materialStatus}</span>
+        <span>Level {order.assemblyLevel}</span>
+        {parentOrder ? <span>Child of {parentOrder.id}</span> : null}
+        {childOrders.length > 0 ? (
+          <span>{childOrders.length} direct children</span>
+        ) : null}
       </div>
       <div className="reschedule-actions">
         <button onClick={onMoveEarlier} type="button">
@@ -693,6 +794,20 @@ function SelectedOrder({
         </button>
         <button onClick={onMoveLater} type="button">
           Move later
+        </button>
+        <button onClick={onRepairSequence} type="button">
+          Repair sequence
+        </button>
+      </div>
+      <div className="family-actions">
+        <button onClick={onMoveFamilyEarlier} type="button">
+          Move family earlier
+        </button>
+        <button onClick={onMoveFamilyLater} type="button">
+          Move family later
+        </button>
+        <button onClick={onRemoveFamily} type="button">
+          Remove family ({familySize})
         </button>
       </div>
       <div className="routing-list">
@@ -703,10 +818,19 @@ function SelectedOrder({
           const machine = getMachine(operation.machineId);
           const skill = getSkill(operation.skill);
           const tool = getTool(operation.toolId);
+          const sequence = sequenceStatuses.find(
+            (item) => item.operationId === operation.id,
+          );
           return (
-            <div className="routing-step" key={operation.id}>
+            <div
+              className={`routing-step routing-${sequence?.status ?? "unscheduled"}`}
+              key={operation.id}
+            >
               <strong>Op {operation.step}</strong>
-              <span>{operation.label}</span>
+              <span>
+                {operation.label}
+                <i>{sequence?.status ?? "unscheduled"}</i>
+              </span>
               <small>
                 {machine?.name} | {skill?.label} | {tool?.label}
               </small>
@@ -715,10 +839,50 @@ function SelectedOrder({
                   ? `${days[scheduled.day].label} ${scheduled.start.toFixed(1)}h`
                   : "Not scheduled"}
               </em>
+              <small>{sequence?.message}</small>
+              <div className="operation-actions">
+                <button
+                  onClick={() => onMoveOperationChain(operation.id, -1)}
+                  type="button"
+                >
+                  Chain earlier
+                </button>
+                <button
+                  onClick={() => onMoveOperationChain(operation.id, 1)}
+                  type="button"
+                >
+                  Chain later
+                </button>
+              </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function SequenceConflictList({
+  conflicts,
+}: {
+  conflicts: RoutingSequenceStatus[];
+}) {
+  return (
+    <div className="constraint-group">
+      <span>Routing sequence</span>
+      {conflicts.length === 0 ? (
+        <p>All routed operations follow their predecessor sequence.</p>
+      ) : (
+        conflicts.slice(0, 3).map((conflict) => (
+          <div
+            className="constraint-row"
+            key={`${conflict.workOrderId}-${conflict.operationId}`}
+          >
+            <strong>{conflict.workOrderId}</strong>
+            <span>{conflict.message}</span>
+          </div>
+        ))
+      )}
     </div>
   );
 }

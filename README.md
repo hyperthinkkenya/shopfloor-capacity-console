@@ -36,6 +36,12 @@ version keeps the model local so the scheduling experience is easy to review.
 ## Current Planning Features
 
 - Move a selected work order earlier or later in the calendar.
+- Enforce multi-stage routing sequence so successor operations cannot start
+  before predecessor operations finish.
+- Move one routing operation and automatically move all subsequent operations
+  in that work order.
+- Model nested assembly work orders and cascade parent assembly move/remove
+  actions through all descendant subassembly work orders.
 - Change daily calendar hours and automatically recalculate work order load.
 - Set a capacity utilization target and replan toward that target.
 - Stage NetSuite fetch and schedule-update actions in mock mode.
