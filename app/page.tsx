@@ -190,10 +190,13 @@ export default function Home() {
       setSyncState((current) => ({
         ...current,
         lastFetch:
-          data.mode === "connected"
-            ? `Fetched ${data.count} work orders from NetSuite`
+          data.mode === "connected" || data.mode === "connected_partial"
+            ? netSuiteFetchSummary(data)
             : data.message ?? "NetSuite function is not configured yet",
-        mode: data.mode === "connected" ? "connected" : "mock",
+        mode:
+          data.mode === "connected" || data.mode === "connected_partial"
+            ? "connected"
+            : "mock",
         pendingUpdates: 0,
       }));
     } catch {
@@ -449,6 +452,24 @@ export default function Home() {
       </section>
     </main>
   );
+}
+
+function netSuiteFetchSummary(data: {
+  count?: number;
+  counts?: { operations?: number; resources?: number; tools?: number };
+  mode?: string;
+  warnings?: string[];
+}) {
+  const counts = data.counts ?? {};
+  const warningSuffix =
+    data.mode === "connected_partial" || (data.warnings?.length ?? 0) > 0
+      ? " with warnings"
+      : "";
+  return `Fetched ${data.count ?? 0} work orders, ${
+    counts.operations ?? 0
+  } operations, ${counts.resources ?? 0} resources, ${
+    counts.tools ?? 0
+  } tools${warningSuffix}`;
 }
 
 function Metric({
@@ -901,8 +922,8 @@ function NetSuitePanel({
   return (
     <div className="netsuite-panel">
       <p>
-        Live credentials belong in a server route or function. This prototype
-        keeps the browser on mock data and stages the update payload safely.
+        Live credentials stay in the Netlify Function. Fetch pulls NetSuite
+        work orders and routings; schedule updates are still staged safely.
       </p>
       <div className="sync-facts">
         <span>Fetch: {syncState.lastFetch}</span>

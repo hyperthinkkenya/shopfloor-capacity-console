@@ -1493,7 +1493,7 @@
       function renderNetSuitePanel() {
         document.getElementById("syncMode").textContent = state.sync.mode;
         document.getElementById("netsuitePanel").innerHTML = `
-          <p>Live NetSuite credentials belong in a backend function. This prototype safely stages fetch and update actions with mock data.</p>
+          <p>Live NetSuite credentials stay in the backend function. Fetch pulls work orders and routings; schedule updates are still staged safely.</p>
           <div class="sync-facts">
             <span>Fetch: ${state.sync.lastFetch}</span>
             <span>Publish: ${state.sync.lastPublish}</span>
@@ -1617,10 +1617,14 @@
           const data = await response.json();
           if (!response.ok) {
             state.sync.lastFetch = data.message || "NetSuite function returned an error";
-          } else if (data.mode === "connected") {
-            state.sync.lastFetch = `Fetched ${data.count} work orders from NetSuite`;
+          } else if (data.mode === "connected" || data.mode === "connected_partial") {
+            const counts = data.counts || {};
+            const warningSuffix = data.mode === "connected_partial" || (data.warnings || []).length ? " with warnings" : "";
+            state.sync.lastFetch = `Fetched ${data.count || 0} work orders, ${counts.operations || 0} operations, ${counts.resources || 0} resources, ${counts.tools || 0} tools${warningSuffix}`;
+            state.sync.mode = "connected";
           } else {
             state.sync.lastFetch = data.message || "NetSuite function is not configured yet";
+            state.sync.mode = "mock";
           }
         } catch (error) {
           state.sync.lastFetch = "Could not reach the NetSuite function";

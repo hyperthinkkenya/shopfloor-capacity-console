@@ -1,20 +1,53 @@
 import crypto from "node:crypto";
 
-const DEFAULT_QUERY = `
+const DEFAULT_WORK_ORDER_QUERY = `
+SELECT
+  t.id,
+  t.tranid,
+  BUILTIN.DF(t.entity) AS customer,
+  t.status,
+  BUILTIN.DF(t.status) AS status_text,
+  t.trandate,
+  t.startdate,
+  t.enddate,
+  tl.item,
+  BUILTIN.DF(tl.item) AS item_text,
+  ABS(tl.quantity) AS quantity
+FROM
+  transaction t
+LEFT JOIN
+  transactionline tl
+ON
+  tl.transaction = t.id
+  AND tl.mainline = 'T'
+WHERE
+  t.type = 'WorkOrd'
+ORDER BY
+  t.startdate,
+  t.tranid
+`;
+
+const DEFAULT_OPERATION_QUERY = `
 SELECT
   id,
-  tranid,
-  entity,
-  status,
-  trandate,
+  workorder,
+  operationsequence,
+  title,
+  manufacturingworkcenter,
+  BUILTIN.DF(manufacturingworkcenter) AS workcenter_text,
+  setuptime,
+  runrate,
+  remainingwork,
+  actualwork,
   startdate,
-  enddate
+  enddate,
+  status,
+  BUILTIN.DF(status) AS status_text
 FROM
-  transaction
-WHERE
-  type = 'WorkOrd'
+  manufacturingoperationtask
 ORDER BY
-  startdate
+  workorder,
+  operationsequence
 `;
 
 export async function handler(event) {
@@ -41,42 +74,73 @@ export async function handler(event) {
     });
   }
 
-  const url = `${config.restBaseUrl.replace(/\/$/, "")}/query/v1/suiteql`;
-  const query = process.env.NETSUITE_WORK_ORDER_QUERY || DEFAULT_QUERY;
+  const includeRaw = event.queryStringParameters?.raw === "1";
+  const workOrderQuery =
+    process.env.NETSUITE_WORK_ORDER_QUERY || DEFAULT_WORK_ORDER_QUERY;
+  const operationQuery =
+    process.env.NETSUITE_OPERATION_QUERY || DEFAULT_OPERATION_QUERY;
 
   try {
-    const netsuiteResponse = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: oauthHeader(url, "POST", config),
-        "Content-Type": "application/json",
-        Prefer: "transient",
-      },
-      body: JSON.stringify({ q: query }),
+    const workOrderRows = await runSuiteQl(config, workOrderQuery, "workOrders");
+    const operationPull = await runOptionalSuiteQl(
+      config,
+      operationQuery,
+      "operations",
+    );
+    const resourcePull = await runOptionalSuiteQl(
+      config,
+      process.env.NETSUITE_RESOURCE_QUERY,
+      "resources",
+    );
+    const toolPull = await runOptionalSuiteQl(
+      config,
+      process.env.NETSUITE_TOOL_QUERY,
+      "tools",
+    );
+    const normalized = normalizeScheduleData({
+      operationRows: operationPull.rows,
+      resourceRows: resourcePull.rows,
+      toolRows: toolPull.rows,
+      workOrderRows,
     });
+    const warnings = [operationPull, resourcePull, toolPull]
+      .filter((pull) => pull.warning)
+      .map((pull) => pull.warning);
 
-    const text = await netsuiteResponse.text();
-    const data = parseJson(text);
-
-    if (!netsuiteResponse.ok) {
-      return response(netsuiteResponse.status, {
+    return response(200, {
+      mode: warnings.length > 0 ? "connected_partial" : "connected",
+      count: normalized.workOrders.length,
+      counts: {
+        operations: operationPull.rows.length,
+        resources: normalized.resources.length,
+        tools: normalized.tools.length,
+        workOrders: normalized.workOrders.length,
+      },
+      warnings,
+      workOrders: normalized.workOrders,
+      resources: normalized.resources,
+      tools: normalized.tools,
+      raw: includeRaw
+        ? {
+            operations: operationPull.rows,
+            resources: resourcePull.rows,
+            tools: toolPull.rows,
+            workOrders: workOrderRows,
+          }
+        : undefined,
+    });
+  } catch (error) {
+    if (error instanceof NetSuiteRequestError) {
+      return response(error.status, {
         authContext: safeAuthContext(config),
         mode: "netsuite_error",
-        status: netsuiteResponse.status,
-        message: data?.title || data?.detail || text || "NetSuite request failed.",
-        raw: data || text,
+        status: error.status,
+        message: error.message,
+        query: error.label,
+        raw: error.raw,
       });
     }
 
-    const rows = Array.isArray(data?.items) ? data.items : [];
-
-    return response(200, {
-      mode: "connected",
-      count: rows.length,
-      workOrders: rows.map(mapSuiteQlRow),
-      raw: rows,
-    });
-  } catch (error) {
     return response(500, {
       mode: "function_error",
       message: error instanceof Error ? error.message : "Unknown NetSuite function error.",
@@ -94,6 +158,75 @@ function readConfig() {
     tokenId: process.env.NETSUITE_TOKEN_ID || "",
     tokenSecret: process.env.NETSUITE_TOKEN_SECRET || "",
   };
+}
+
+async function runOptionalSuiteQl(config, query, label) {
+  if (!query) return { rows: [], warning: "" };
+
+  try {
+    const rows = await runSuiteQl(config, query, label);
+    return { rows, warning: "" };
+  } catch (error) {
+    if (error instanceof NetSuiteRequestError) {
+      return {
+        rows: [],
+        warning: `${label} query skipped: ${error.message}`,
+      };
+    }
+
+    return {
+      rows: [],
+      warning: `${label} query skipped: ${
+        error instanceof Error ? error.message : "Unknown error"
+      }`,
+    };
+  }
+}
+
+async function runSuiteQl(config, query, label) {
+  const limit = clampNumber(process.env.NETSUITE_SUITEQL_LIMIT, 1, 1000, 1000);
+  const maxRows = clampNumber(process.env.NETSUITE_SUITEQL_MAX_ROWS, 1, 100000, 5000);
+  const rows = [];
+  let offset = 0;
+
+  while (rows.length < maxRows) {
+    const url = `${config.restBaseUrl.replace(
+      /\/$/,
+      "",
+    )}/query/v1/suiteql?limit=${limit}&offset=${offset}`;
+    const netsuiteResponse = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: oauthHeader(url, "POST", config),
+        "Content-Type": "application/json",
+        Prefer: "transient",
+      },
+      body: JSON.stringify({ q: query }),
+    });
+
+    const text = await netsuiteResponse.text();
+    const data = parseJson(text);
+
+    if (!netsuiteResponse.ok) {
+      throw new NetSuiteRequestError(
+        data?.title || data?.detail || text || "NetSuite request failed.",
+        netsuiteResponse.status,
+        data || text,
+        label,
+      );
+    }
+
+    const pageRows = Array.isArray(data?.items) ? data.items : [];
+    rows.push(...pageRows);
+
+    if (pageRows.length < limit || rows.length >= Number(data?.totalResults || 0)) {
+      break;
+    }
+
+    offset += pageRows.length;
+  }
+
+  return rows.slice(0, maxRows);
 }
 
 function realmFromRestBaseUrl(restBaseUrl) {
@@ -180,23 +313,228 @@ function normalizeParams(params) {
     .join("&");
 }
 
-function mapSuiteQlRow(row, index) {
-  const transactionId = row.tranid || row.tranId || `WO-${index + 1}`;
+function normalizeScheduleData({
+  operationRows,
+  resourceRows,
+  toolRows,
+  workOrderRows,
+}) {
+  const operationsByWorkOrder = groupOperationsByWorkOrder(operationRows);
+  const derivedResources = deriveResourcesFromOperations(operationRows);
   return {
+    resources: resourceRows.length > 0 ? resourceRows.map(mapResourceRow) : derivedResources,
+    tools: toolRows.map(mapToolRow),
+    workOrders: workOrderRows.map((row, index) =>
+      mapWorkOrderRow(row, index, operationsByWorkOrder.get(String(row.id)) || []),
+    ),
+  };
+}
+
+function groupOperationsByWorkOrder(operationRows) {
+  const groups = new Map();
+  operationRows.forEach((row) => {
+    const workOrderId = stringValue(row.workorder, row.workOrder, row.work_order);
+    if (!workOrderId) return;
+    const rows = groups.get(workOrderId) || [];
+    rows.push(row);
+    groups.set(workOrderId, rows);
+  });
+
+  groups.forEach((rows) => {
+    rows.sort(
+      (a, b) =>
+        numberValue(a.operationsequence, a.operationSequence) -
+        numberValue(b.operationsequence, b.operationSequence),
+    );
+  });
+
+  return groups;
+}
+
+function mapWorkOrderRow(row, index, operationRows) {
+  const netsuiteId = stringValue(row.id, row.internalid, row.internalId);
+  const transactionId = stringValue(row.tranid, row.tranId, `WO-${index + 1}`);
+  const quantity = numberValue(row.quantity, row.orderquantity, row.orderQuantity);
+  return {
+    assemblyLevel: numberValue(row.assemblylevel, row.assemblyLevel, 0),
     id: transactionId,
-    netsuiteId: String(row.id || ""),
-    customer: String(row.entity || "NetSuite customer"),
-    item: String(row.item || "NetSuite work order"),
-    quantity: Number(row.quantity || 0),
-    dueDay: 4,
-    priority: "Standard",
-    materialStatus: String(row.status || "Released"),
-    routing: [],
+    netsuiteId,
+    parentWorkOrderId: stringValue(
+      row.parentworkorder,
+      row.parentWorkOrder,
+      row.parent_work_order,
+      "",
+    ),
+    customer: stringValue(row.customer, row.entity, row.entity_text, "NetSuite customer"),
+    item: stringValue(row.item_text, row.itemText, row.item, "NetSuite work order"),
+    quantity,
+    dueDay: dateToPlanningDay(row.enddate || row.endDate || row.duedate || row.dueDate),
+    priority: mapPriority(row.priority, row.priority_text, row.priorityText),
+    materialStatus: mapMaterialStatus(row.status_text, row.status),
+    routing: operationRows.map((operationRow, operationIndex) =>
+      mapOperationRow(operationRow, operationIndex, quantity),
+    ),
     source: "netsuite",
     transactionDate: row.trandate || row.tranDate || null,
     startDate: row.startdate || row.startDate || null,
     endDate: row.enddate || row.endDate || null,
   };
+}
+
+function mapOperationRow(row, index, quantity) {
+  const operationId = stringValue(row.id, row.internalid, row.internalId);
+  const sequence = stringValue(
+    row.operationsequence,
+    row.operationSequence,
+    (index + 1) * 10,
+  );
+  const workCenterId = stringValue(
+    row.manufacturingworkcenter,
+    row.manufacturingWorkCenter,
+    row.workcenter,
+    row.workCenter,
+    "unassigned",
+  );
+  const machineId = resourceId(workCenterId);
+  const duration = estimateOperationHours(row, quantity);
+
+  return {
+    id: operationId ? `ns-op-${operationId}` : `ns-op-${sequence}`,
+    step: sequence,
+    label: stringValue(row.title, row.operationname, row.operationName, `Operation ${sequence}`),
+    machineId,
+    skill: machineId,
+    toolId: stringValue(row.toolid, row.toolId, `tool-${machineId}`),
+    duration,
+    skillHours: duration,
+    netsuiteId: operationId,
+    status: stringValue(row.status_text, row.statusText, row.status, ""),
+    startDate: row.startdate || row.startDate || null,
+    endDate: row.enddate || row.endDate || null,
+  };
+}
+
+function deriveResourcesFromOperations(operationRows) {
+  const resources = new Map();
+  operationRows.forEach((row) => {
+    const workCenterId = stringValue(
+      row.manufacturingworkcenter,
+      row.manufacturingWorkCenter,
+      row.workcenter,
+      row.workCenter,
+      "",
+    );
+    if (!workCenterId) return;
+    const id = resourceId(workCenterId);
+    resources.set(id, {
+      id,
+      netsuiteId: workCenterId,
+      label: stringValue(
+        row.workcenter_text,
+        row.workCenterText,
+        row.manufacturingworkcenter_text,
+        `Work center ${workCenterId}`,
+      ),
+      type: "workCenter",
+    });
+  });
+  return Array.from(resources.values());
+}
+
+function mapResourceRow(row) {
+  const netsuiteId = stringValue(row.id, row.internalid, row.internalId);
+  return {
+    id: resourceId(netsuiteId || stringValue(row.name, row.label, "resource")),
+    netsuiteId,
+    label: stringValue(row.name, row.label, row.workcenter_text, `Resource ${netsuiteId}`),
+    type: stringValue(row.type, "resource"),
+    capacityHours: numberValue(row.capacityhours, row.capacityHours, row.capacity, 0),
+  };
+}
+
+function mapToolRow(row) {
+  const netsuiteId = stringValue(row.id, row.internalid, row.internalId);
+  return {
+    id: stringValue(row.toolid, row.toolId, netsuiteId ? `tool-${netsuiteId}` : ""),
+    netsuiteId,
+    label: stringValue(row.name, row.label, `Tool ${netsuiteId}`),
+    quantity: numberValue(row.quantity, row.available, 1),
+    location: stringValue(row.location, row.location_text, row.locationText, ""),
+  };
+}
+
+function estimateOperationHours(row, quantity) {
+  const remainingWork = numberValue(row.remainingwork, row.remainingWork);
+  if (remainingWork > 0) return roundHours(remainingWork);
+
+  const actualWork = numberValue(row.actualwork, row.actualWork);
+  if (actualWork > 0) return roundHours(actualWork);
+
+  const setupMinutes = numberValue(row.setuptime, row.setupTime);
+  const runMinutes = numberValue(row.runrate, row.runRate);
+  const estimatedMinutes = setupMinutes + runMinutes * Math.max(quantity, 1);
+  return roundHours(estimatedMinutes > 0 ? estimatedMinutes / 60 : 1);
+}
+
+function dateToPlanningDay(value) {
+  if (!value) return 4;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 4;
+  const day = date.getDay();
+  if (day === 1) return 0;
+  if (day === 2) return 1;
+  if (day === 3) return 2;
+  if (day === 4) return 3;
+  return 4;
+}
+
+function mapPriority(...values) {
+  const value = stringValue(...values).toLowerCase();
+  if (value.includes("hot") || value.includes("urgent") || value.includes("rush")) {
+    return "Hot";
+  }
+  if (value.includes("high")) return "High";
+  return "Standard";
+}
+
+function mapMaterialStatus(...values) {
+  const value = stringValue(...values, "Released");
+  if (/hold/i.test(value)) return "Hold";
+  if (/partial/i.test(value)) return "Partial";
+  return value;
+}
+
+function resourceId(value) {
+  return `ns-wc-${String(value || "unassigned")
+    .trim()
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase()}`;
+}
+
+function stringValue(...values) {
+  const value = values.find(
+    (candidate) => candidate !== undefined && candidate !== null && candidate !== "",
+  );
+  return value === undefined || value === null ? "" : String(value);
+}
+
+function numberValue(...values) {
+  const value = values.find(
+    (candidate) => candidate !== undefined && candidate !== null && candidate !== "",
+  );
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function roundHours(value) {
+  return Math.max(0.25, Number(value.toFixed(2)));
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.max(min, Math.min(max, number));
 }
 
 function parseJson(text) {
@@ -228,4 +566,14 @@ function encode(value) {
 
 function escapeHeader(value) {
   return encode(String(value));
+}
+
+class NetSuiteRequestError extends Error {
+  constructor(message, status, raw, label) {
+    super(message);
+    this.name = "NetSuiteRequestError";
+    this.status = status;
+    this.raw = raw;
+    this.label = label;
+  }
 }

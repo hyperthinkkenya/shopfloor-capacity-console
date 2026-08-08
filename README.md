@@ -89,6 +89,29 @@ After deployment, the work order endpoint is:
 
 The browser app calls this endpoint when you click **Fetch work orders**.
 
+The Netlify Function now pulls NetSuite data in layers:
+
+- Work order headers from SuiteQL transaction data.
+- Manufacturing operation tasks from `manufacturingoperationtask`, grouped into
+  each work order as routing operations.
+- Work center resources derived from operation-task work centers.
+- Optional tool and resource records through account-specific SuiteQL.
+
+You can override the default pulls with these Netlify environment variables:
+
+```text
+NETSUITE_WORK_ORDER_QUERY
+NETSUITE_OPERATION_QUERY
+NETSUITE_RESOURCE_QUERY
+NETSUITE_TOOL_QUERY
+NETSUITE_SUITEQL_LIMIT=1000
+NETSUITE_SUITEQL_MAX_ROWS=5000
+```
+
+Use `NETSUITE_RESOURCE_QUERY` and `NETSUITE_TOOL_QUERY` when the demo account's
+machine calendars, employee skill groups, fixtures, or tooling live in custom
+records or custom fields.
+
 ## Run Locally
 
 ```bash
