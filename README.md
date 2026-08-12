@@ -92,6 +92,8 @@ The browser app calls this endpoint when you click **Fetch work orders**.
 The Netlify Function now pulls NetSuite data in layers:
 
 - Work order headers from SuiteQL transaction data.
+- Or work order headers from a SuiteScript RESTlet saved search when
+  `NETSUITE_WORK_ORDER_RESTLET_URL` is set.
 - Manufacturing operation tasks from `manufacturingoperationtask`, grouped into
   each work order as routing operations.
 - Work center resources derived from operation-task work centers.
@@ -101,6 +103,7 @@ You can override the default pulls with these Netlify environment variables:
 
 ```text
 NETSUITE_WORK_ORDER_QUERY
+NETSUITE_WORK_ORDER_RESTLET_URL
 NETSUITE_OPERATION_QUERY
 NETSUITE_RESOURCE_QUERY
 NETSUITE_TOOL_QUERY
@@ -112,11 +115,53 @@ Use `NETSUITE_RESOURCE_QUERY` and `NETSUITE_TOOL_QUERY` when the demo account's
 machine calendars, employee skill groups, fixtures, or tooling live in custom
 records or custom fields.
 
+If SuiteQL cannot access `transaction` for the token role, upload
+`netsuite/work-order-search-restlet.js` to NetSuite, create a RESTlet script
+deployment, and paste the external deployment URL into `.env.local`:
+
+```text
+NETSUITE_WORK_ORDER_RESTLET_URL=https://td3021155.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=SCRIPT_ID&deploy=DEPLOY_ID
+```
+
+When this value is set, the connector pulls work orders from the RESTlet instead
+of the SuiteQL transaction query.
+
 ## Run Locally
 
 ```bash
 npm install
 npm run dev
+```
+
+## Connect the Local HTML App to NetSuite
+
+The static app at `outputs/index.html` can connect to NetSuite through a local
+connector on your Mac. This keeps NetSuite secrets out of browser code.
+
+1. Create a local secrets file:
+
+```bash
+cp .env.example .env.local
+```
+
+2. Add your real NetSuite values to `.env.local`.
+
+3. Start the local connector:
+
+```bash
+npm run local:netsuite
+```
+
+4. Open the existing local app file:
+
+```text
+file:///Users/rvetrive/Documents/Codex/2026-06-15/id-like-to-build-an-app/outputs/index.html
+```
+
+5. Click **Fetch work orders**. When the app is opened from `file://`, it calls:
+
+```text
+http://localhost:8888/.netlify/functions/netsuite-work-orders
 ```
 
 ## Build

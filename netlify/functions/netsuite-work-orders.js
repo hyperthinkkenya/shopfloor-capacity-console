@@ -81,7 +81,15 @@ export async function handler(event) {
     process.env.NETSUITE_OPERATION_QUERY || DEFAULT_OPERATION_QUERY;
 
   try {
-    const workOrderRows = await runSuiteQl(config, workOrderQuery, "workOrders");
+    const workOrderPull = config.workOrderRestletUrl
+      ? {
+          rows: await runRestlet(config, config.workOrderRestletUrl, "workOrderRestlet"),
+          source: "restlet",
+        }
+      : {
+          rows: await runSuiteQl(config, workOrderQuery, "workOrders"),
+          source: "suiteql",
+        };
     const operationPull = await runOptionalSuiteQl(
       config,
       operationQuery,
@@ -101,7 +109,7 @@ export async function handler(event) {
       operationRows: operationPull.rows,
       resourceRows: resourcePull.rows,
       toolRows: toolPull.rows,
-      workOrderRows,
+      workOrderRows: workOrderPull.rows,
     });
     const warnings = [operationPull, resourcePull, toolPull]
       .filter((pull) => pull.warning)
@@ -117,6 +125,7 @@ export async function handler(event) {
         workOrders: normalized.workOrders.length,
       },
       warnings,
+      source: workOrderPull.source,
       workOrders: normalized.workOrders,
       resources: normalized.resources,
       tools: normalized.tools,
@@ -125,7 +134,7 @@ export async function handler(event) {
             operations: operationPull.rows,
             resources: resourcePull.rows,
             tools: toolPull.rows,
-            workOrders: workOrderRows,
+            workOrders: workOrderPull.rows,
           }
         : undefined,
     });
@@ -157,6 +166,7 @@ function readConfig() {
     restBaseUrl: process.env.NETSUITE_REST_BASE_URL || "",
     tokenId: process.env.NETSUITE_TOKEN_ID || "",
     tokenSecret: process.env.NETSUITE_TOKEN_SECRET || "",
+    workOrderRestletUrl: process.env.NETSUITE_WORK_ORDER_RESTLET_URL || "",
   };
 }
 
@@ -229,6 +239,30 @@ async function runSuiteQl(config, query, label) {
   return rows.slice(0, maxRows);
 }
 
+async function runRestlet(config, url, label) {
+  const netsuiteResponse = await fetch(url, {
+    method: "GET",
+    headers: {
+      Authorization: oauthHeader(url, "GET", config),
+      "Content-Type": "application/json",
+    },
+  });
+
+  const text = await netsuiteResponse.text();
+  const data = parseJson(text);
+
+  if (!netsuiteResponse.ok) {
+    throw new NetSuiteRequestError(
+      data?.title || data?.detail || text || "NetSuite RESTlet request failed.",
+      netsuiteResponse.status,
+      data || text,
+      label,
+    );
+  }
+
+  return normalizeRestletRows(data);
+}
+
 function realmFromRestBaseUrl(restBaseUrl) {
   try {
     const hostname = new URL(restBaseUrl).hostname;
@@ -252,6 +286,7 @@ function safeAuthContext(config) {
     realm: config.realm,
     restHost: safeHost(config.restBaseUrl),
     tokenIdConfigured: Boolean(config.tokenId),
+    workOrderRestletConfigured: Boolean(config.workOrderRestletUrl),
   };
 }
 
@@ -278,6 +313,7 @@ function requiredConfig(config) {
 }
 
 function oauthHeader(url, method, config) {
+  const parsedUrl = new URL(url);
   const oauthParams = {
     oauth_consumer_key: config.consumerKey,
     oauth_nonce: crypto.randomBytes(16).toString("hex"),
@@ -286,11 +322,15 @@ function oauthHeader(url, method, config) {
     oauth_token: config.tokenId,
     oauth_version: "1.0",
   };
+  const signatureParams = { ...oauthParams };
+  parsedUrl.searchParams.forEach((value, key) => {
+    signatureParams[key] = value;
+  });
 
   const signatureBase = [
     method.toUpperCase(),
-    encode(url),
-    encode(normalizeParams(oauthParams)),
+    encode(`${parsedUrl.origin}${parsedUrl.pathname}`),
+    encode(normalizeParams(signatureParams)),
   ].join("&");
   const signingKey = `${encode(config.consumerSecret)}&${encode(config.tokenSecret)}`;
   const signature = crypto
@@ -330,6 +370,15 @@ function normalizeScheduleData({
   };
 }
 
+function normalizeRestletRows(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.workOrders)) return data.workOrders;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.results)) return data.results;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+}
+
 function groupOperationsByWorkOrder(operationRows) {
   const groups = new Map();
   operationRows.forEach((row) => {
@@ -365,8 +414,21 @@ function mapWorkOrderRow(row, index, operationRows) {
       row.parent_work_order,
       "",
     ),
-    customer: stringValue(row.customer, row.entity, row.entity_text, "NetSuite customer"),
-    item: stringValue(row.item_text, row.itemText, row.item, "NetSuite work order"),
+    customer: stringValue(
+      row.customer,
+      row.entityText,
+      row.entity_text,
+      row.entity,
+      "NetSuite customer",
+    ),
+    item: stringValue(
+      row.item_text,
+      row.itemText,
+      row.assemblyText,
+      row.assembly,
+      row.item,
+      "NetSuite work order",
+    ),
     quantity,
     dueDay: dateToPlanningDay(row.enddate || row.endDate || row.duedate || row.dueDate),
     priority: mapPriority(row.priority, row.priority_text, row.priorityText),

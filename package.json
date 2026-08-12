@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "vinext dev",
+    "local:netsuite": "node scripts/local-netsuite-server.js",
     "build": "vinext build",
     "start": "vinext start",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",

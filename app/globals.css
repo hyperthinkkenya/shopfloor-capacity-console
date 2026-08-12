@@ -239,7 +239,9 @@ h1 {
 .planning-strip {
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(360px, 1.4fr) minmax(220px, 0.6fr) minmax(260px, 0.7fr);
+  grid-template-columns:
+    minmax(230px, 0.8fr) minmax(360px, 1.35fr) minmax(220px, 0.6fr)
+    minmax(260px, 0.65fr);
   margin-bottom: 16px;
 }
 
@@ -249,6 +251,59 @@ h1 {
 
 .planner-wide {
   min-width: 0;
+}
+
+.date-filter-controls {
+  display: grid;
+  gap: 10px;
+}
+
+.date-filter-controls label {
+  display: grid;
+  gap: 6px;
+}
+
+.date-filter-controls label span {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.date-filter-controls input {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--foreground);
+  min-height: 38px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.view-mode-switch {
+  background: #e6eeeb;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 4px;
+}
+
+.view-mode-switch button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  min-height: 32px;
+  padding: 0 8px;
+}
+
+.view-mode-switch button[aria-pressed="true"] {
+  background: var(--panel);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px rgba(10, 35, 30, 0.12);
 }
 
 .day-hour-grid {
@@ -467,8 +522,6 @@ h1 {
 
 .schedule-grid {
   display: grid;
-  grid-template-columns: 190px repeat(5, minmax(150px, 1fr));
-  min-width: 940px;
 }
 
 .schedule-corner,
@@ -586,8 +639,6 @@ h1 {
 
 .load-matrix {
   display: grid;
-  grid-template-columns: 190px repeat(5, minmax(130px, 1fr));
-  min-width: 860px;
   overflow-x: auto;
 }
 
@@ -661,9 +712,13 @@ h1 {
 }
 
 .tool-row {
+  align-items: center;
   border: 1px solid var(--line);
   border-radius: 8px;
+  display: flex;
   flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
   padding: 12px;
 }
 
@@ -683,7 +738,10 @@ h1 {
 .tool-days {
   display: grid;
   gap: 5px;
-  grid-template-columns: repeat(5, 28px);
+  grid-auto-flow: column;
+  grid-auto-columns: 28px;
+  max-width: min(100%, 760px);
+  overflow-x: auto;
 }
 
 .tool-days span {
